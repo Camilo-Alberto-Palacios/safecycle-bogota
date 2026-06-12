@@ -1,0 +1,15 @@
+# Archivos del sistema operativo
+.DS_Store
+Thumbs.db
+
+# Logs y temporales
+*.log
+*.tmp
+
+# Entorno de IDE
+.gemini/
+.vscode/
+
+# Dependencias Node (si se agregan en el futuro)
+node_modules/
+package-lock.json
