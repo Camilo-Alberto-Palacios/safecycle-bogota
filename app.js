@@ -406,9 +406,7 @@ const mapLayers = {};
 document.addEventListener('DOMContentLoaded', () => {
     initMap();
     initShapChart();
-    
-    // Select default segment on start
-    selectSegment('usme_caracas');
+    // Map loads clean — segments hidden, route planner ready
 });
 
 // Initialize Leaflet Map with Light/Clear Theme
@@ -525,59 +523,39 @@ function renderBoundaries() {
     ruuTooltip.setOpacity(0.5);
 }
 
-// Render bike segments as colored polylines
+// Render bike segments — hidden by default, only visible when explicitly audited
 function renderAllSegments() {
     // Clear existing layers if any
     Object.keys(mapLayers).forEach(id => {
-        map.removeLayer(mapLayers[id]);
+        if (mapLayers[id]) map.removeLayer(mapLayers[id]);
     });
 
     Object.keys(bikeSegments).forEach(id => {
         const segment = bikeSegments[id];
-        
-        // Calculate initial color based on default state risk level
-        const prediction = calculateRisk(segment);
-        const color = getRiskColor(prediction.level);
-        
-        // Create polyline
+
+        // Create polyline — invisible by default (opacity 0)
         const polyline = L.polyline(segment.coordinates, {
-            color: color,
-            weight: 6,
-            opacity: 0.85,
-            lineJoin: 'round'
+            color: '#6366f1',
+            weight: 0,
+            opacity: 0,
+            lineJoin: 'round',
+            interactive: false
         }).addTo(map);
 
-        // Bind interactive events
-        polyline.on('mouseover', function() {
-            this.setStyle({
-                weight: 10,
-                opacity: 1.0
-            });
-        });
-
-        polyline.on('mouseout', function() {
-            // Restore normal style unless it is the selected segment
-            const isSelected = selectedSegmentId === id;
-            this.setStyle({
-                weight: isSelected ? 9 : 6,
-                opacity: 0.85
-            });
-        });
-
-        polyline.on('click', (e) => {
-            L.DomEvent.stopPropagation(e);
-            selectSegment(id);
-        });
-
-        // Add a tooltip showing basic info
-        polyline.bindTooltip(`<strong>${segment.name}</strong><br>UPZ: ${segment.upz}`, {
-            sticky: true,
-            className: 'custom-tooltip'
-        });
-
-        // Store reference
+        // Store reference (remains hidden until audit mode)
         mapLayers[id] = polyline;
     });
+}
+
+// Hide all segment polylines (reset map to clean state)
+function hideAllSegments() {
+    Object.keys(mapLayers).forEach(id => {
+        if (mapLayers[id]) {
+            mapLayers[id].setStyle({ weight: 0, opacity: 0 });
+            mapLayers[id].options.interactive = false;
+        }
+    });
+    selectedSegmentId = null;
 }
 
 // Switch view between Localidades
@@ -622,39 +600,38 @@ function selectLocalidad(loc) {
         }
     }
 
-    // Pan map to locality center and select first segment
+    // Pan map to locality center — clean view, no auto-selected segment
     if (loc === 'usme') {
         map.flyTo([4.506, -74.115], 13, { duration: 1.5 });
-        selectSegment('usme_caracas');
     } else {
         map.flyTo([4.575, -74.122], 14, { duration: 1.5 });
-        selectSegment('ruu_primero_mayo');
     }
+
+    // Hide all colored segments and reset panel to route planner state
+    hideAllSegments();
+    document.getElementById('prediction-main-container').classList.remove('has-route');
 }
 
-// Select a specific segment and update UI controls
+// Select a specific segment and update UI controls (only called from audit mode)
 function selectSegment(id) {
-    // Highlight segment on map
+    // Hide previously selected segment
     if (selectedSegmentId && mapLayers[selectedSegmentId]) {
-        // Reset old selected segment style
-        const oldSeg = bikeSegments[selectedSegmentId];
-        const oldPred = calculateRisk(oldSeg);
-        mapLayers[selectedSegmentId].setStyle({
-            weight: 6,
-            color: getRiskColor(oldPred.level)
-        });
+        mapLayers[selectedSegmentId].setStyle({ weight: 0, opacity: 0 });
+        mapLayers[selectedSegmentId].options.interactive = false;
     }
 
     selectedSegmentId = id;
     const segment = bikeSegments[id];
 
-    // Style active segment
+    // Show only the audited segment with its risk color
     const currentPred = calculateRisk(segment);
     if (mapLayers[id]) {
         mapLayers[id].setStyle({
             weight: 9,
+            opacity: 0.9,
             color: getRiskColor(currentPred.level)
         });
+        mapLayers[id].options.interactive = true;
         mapLayers[id].bringToFront();
     }
 
@@ -848,10 +825,12 @@ function updatePrediction() {
 
     document.getElementById('val-risk-score').innerText = prediction.score;
 
-    // Update polyline color on the map dynamically!
-    if (mapLayers[selectedSegmentId]) {
+    // Update polyline color on the map dynamically (only if segment is visible/audited)
+    if (selectedSegmentId && mapLayers[selectedSegmentId]) {
         mapLayers[selectedSegmentId].setStyle({
-            color: getRiskColor(prediction.level)
+            color: getRiskColor(prediction.level),
+            weight: 9,
+            opacity: 0.9
         });
     }
 
@@ -1523,13 +1502,15 @@ function clearRoute() {
     document.getElementById('btn-clear-route').style.display = 'none';
     document.getElementById('prediction-main-container').classList.remove('has-route');
     
+    // Reset origin input placeholder but leave map clean (no auto-selected segment)
     if (activeLocalidad === 'usme') {
         document.getElementById('input-route-origin').value = 'Portal Usme';
-        selectSegment('usme_caracas');
     } else {
         document.getElementById('input-route-origin').value = 'Molinos';
-        selectSegment('ruu_primero_mayo');
     }
+    
+    // Hide all segments and return to clean map state
+    hideAllSegments();
 }
 
 // Clear route polylines from the map
