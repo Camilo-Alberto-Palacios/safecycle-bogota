@@ -316,6 +316,7 @@ export default function MainDashboard() {
             mapComponent={
                 <MapComponent
                     localidad={localidad}
+                    onLocalidadChange={handleLocalidadChange}
                     selectedSegmentId={selectedSegmentId}
                     onSelectSegment={handleSelectSegment}
                     onMapAuditClick={handleMapAuditClick}

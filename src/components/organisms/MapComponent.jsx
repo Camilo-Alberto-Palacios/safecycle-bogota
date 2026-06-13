@@ -26,6 +26,7 @@ function getRiskColor(level) {
 
 export default function MapComponent({
     localidad,
+    onLocalidadChange,
     selectedSegmentId,
     onSelectSegment,
     onMapAuditClick,
@@ -40,8 +41,8 @@ export default function MapComponent({
 }) {
     const mapContainerRef = useRef(null);
     const mapRef = useRef(null);
-    const boundaryLayersRef = useRef({});
-    const tooltipLayersRef = useRef({});
+    const localidadesLayerRef = useRef(null);
+    const activePolygonsRef = useRef({});
     const segmentLayersRef = useRef({});
     const routeLayersRef = useRef([]);
     const routeMarkersRef = useRef({});
@@ -53,7 +54,8 @@ export default function MapComponent({
         onSelectSegment,
         onMapAuditClick,
         onLocationSelect,
-        onSelectRoute
+        onSelectRoute,
+        onLocalidadChange
     };
 
     // Keep ref of selecting location mode
@@ -69,7 +71,7 @@ export default function MapComponent({
     const bikeSegmentsRef = useRef(bikeSegments);
     bikeSegmentsRef.current = bikeSegments;
 
-    // 1. Initial Mount: Initialize Leaflet Map
+    // 1. Initial Mount: Initialize Leaflet Map and Fetch GeoJSON Boundaries
     useEffect(() => {
         if (!mapContainerRef.current) return;
 
@@ -88,46 +90,122 @@ export default function MapComponent({
             maxZoom: 20
         }).addTo(map);
 
-        // Render Boundaries
-        const usmePoly = L.polygon(usmeCoords, {
-            color: '#6366f1',
-            weight: 4,
-            fillColor: '#6366f1',
-            fillOpacity: 0.08,
-            interactive: false
-        }).addTo(map);
+        // Fetch official Bogotá Localities GeoJSON
+        fetch('/localidades.json')
+            .then(res => res.json())
+            .then(data => {
+                const geoJsonLayer = L.geoJSON(data, {
+                    style: (feature) => {
+                        const locName = feature.properties.LocNombre.toUpperCase();
+                        if (locName.includes('USME')) {
+                            const isActive = localidadRef.current === 'usme';
+                            return {
+                                color: '#6366f1',
+                                weight: isActive ? 3.5 : 1.5,
+                                fillColor: '#6366f1',
+                                fillOpacity: isActive ? 0.05 : 0.015,
+                                dashArray: isActive ? null : '3, 6'
+                            };
+                        } else if (locName.includes('RAFAEL URIBE')) {
+                            const isActive = localidadRef.current === 'ruu';
+                            return {
+                                color: '#a855f7',
+                                weight: isActive ? 3.5 : 1.5,
+                                fillColor: '#a855f7',
+                                fillOpacity: isActive ? 0.05 : 0.015,
+                                dashArray: isActive ? null : '3, 6'
+                            };
+                        } else {
+                            return {
+                                color: 'rgba(255, 255, 255, 0.22)',
+                                weight: 1,
+                                fillColor: 'rgba(255, 255, 255, 0.03)',
+                                fillOpacity: 0.005,
+                                dashArray: '2, 4'
+                            };
+                        }
+                    },
+                    onEachFeature: (feature, layer) => {
+                        const locNameRaw = feature.properties.LocNombre;
+                        // Clean encoding discrepancies
+                        let locName = locNameRaw;
+                        if (locNameRaw.includes('NARI')) locName = 'Antonio Nariño';
+                        else if (locNameRaw.includes('ENGATIVA')) locName = 'Engativá';
+                        else if (locNameRaw.includes('SAN CRISTOBAL')) locName = 'San Cristóbal';
+                        else if (locNameRaw.includes('USAQUEN')) locName = 'Usaquén';
+                        else if (locNameRaw.includes('MARTIRES')) locName = 'Los Mártires';
+                        else if (locNameRaw.includes('FONTI')) locName = 'Fontibón';
+                        else if (locNameRaw.includes('CIUDAD BOLIVAR')) locName = 'Ciudad Bolívar';
+                        else if (locNameRaw.includes('FONTIBON')) locName = 'Fontibón';
+                        else {
+                            locName = locNameRaw.toLowerCase().replace(/\b\w/g, c => c.toUpperCase());
+                        }
 
-        const ruuPoly = L.polygon(ruuCoords, {
-            color: '#a855f7',
-            weight: 2,
-            fillColor: '#a855f7',
-            fillOpacity: 0.02,
-            dashArray: '5, 10',
-            interactive: false
-        }).addTo(map);
+                        // Store references to the active polygons
+                        const upperName = locNameRaw.toUpperCase();
+                        if (upperName.includes('USME')) {
+                            activePolygonsRef.current.usme = layer;
+                        } else if (upperName.includes('RAFAEL URIBE')) {
+                            activePolygonsRef.current.ruu = layer;
+                        }
 
-        boundaryLayersRef.current = { usme: usmePoly, ruu: ruuPoly };
+                        // Bind hover tooltip
+                        layer.bindTooltip(`<div class="locality-map-tooltip"><b>Localidad de ${locName}</b></div>`, {
+                            sticky: true,
+                            className: 'custom-tooltip'
+                        });
 
-        // Tooltips
-        const usmeTooltip = L.tooltip({
-            permanent: true,
-            direction: 'center',
-            className: 'locality-tooltip usme-tooltip'
-        })
-        .setLatLng([4.522, -74.118])
-        .setContent("<div class='locality-label-tooltip'><i class='fa-solid fa-map-pin'></i> Localidad de Usme (05)</div>")
-        .addTo(map);
+                        // Interactive features
+                        layer.on({
+                            mouseover: (e) => {
+                                const l = e.target;
+                                const name = feature.properties.LocNombre.toUpperCase();
+                                if (!name.includes('USME') && !name.includes('RAFAEL URIBE')) {
+                                    l.setStyle({
+                                        color: 'rgba(255, 255, 255, 0.55)',
+                                        fillOpacity: 0.04
+                                    });
+                                }
+                            },
+                            mouseout: (e) => {
+                                const l = e.target;
+                                const name = feature.properties.LocNombre.toUpperCase();
+                                if (!name.includes('USME') && !name.includes('RAFAEL URIBE')) {
+                                    l.setStyle({
+                                        color: 'rgba(255, 255, 255, 0.22)',
+                                        fillOpacity: 0.005
+                                    });
+                                }
+                            },
+                            click: (e) => {
+                                const name = feature.properties.LocNombre.toUpperCase();
+                                if (name.includes('USME')) {
+                                    callbacksRef.current.onLocalidadChange('usme');
+                                } else if (name.includes('RAFAEL URIBE')) {
+                                    callbacksRef.current.onLocalidadChange('ruu');
+                                } else {
+                                    L.popup()
+                                        .setLatLng(e.latlng)
+                                        .setContent(`
+                                            <div style="color: #f8fafc; font-family: var(--font-body); font-size: 0.8rem; padding: 0.2rem;">
+                                                <h4 style="font-family: var(--font-heading); font-weight: 700; margin-bottom: 0.25rem; color: #a855f7;">
+                                                    Localidad de ${locName}
+                                                </h4>
+                                                <p style="margin: 0; color: #94a3b8; font-size: 0.75rem; line-height: 1.3;">
+                                                    La simulación predictiva de seguridad está activa en <b>Usme</b> y <b>Rafael Uribe Uribe</b>. ¡Próximamente más localidades!
+                                                </p>
+                                            </div>
+                                        `)
+                                        .openOn(mapRef.current);
+                                }
+                            }
+                        });
+                    }
+                }).addTo(map);
 
-        const ruuTooltip = L.tooltip({
-            permanent: true,
-            direction: 'center',
-            className: 'locality-tooltip ruu-tooltip'
-        })
-        .setLatLng([4.580, -74.115])
-        .setContent("<div class='locality-label-tooltip'><i class='fa-solid fa-map-pin'></i> Localidad Rafael Uribe Uribe (18)</div>")
-        .addTo(map);
-
-        tooltipLayersRef.current = { usme: usmeTooltip, ruu: ruuTooltip };
+                localidadesLayerRef.current = geoJsonLayer;
+            })
+            .catch(err => console.error("Error loading localidades GeoJSON:", err));
 
         // Draw initial segments
         Object.keys(bikeSegmentsRef.current).forEach(id => {
@@ -153,19 +231,18 @@ export default function MapComponent({
             const clickedPoint = [e.latlng.lat, e.latlng.lng];
             let insideActive = false;
             
-            let coords = [];
-            if (localidadRef.current === 'usme' && boundaryLayersRef.current.usme) {
-                let latlngs = boundaryLayersRef.current.usme.getLatLngs();
+            const activeLoc = localidadRef.current;
+            const activeLayer = activePolygonsRef.current[activeLoc];
+            
+            if (activeLayer) {
+                let latlngs = activeLayer.getLatLngs();
+                let coords = [];
                 if (Array.isArray(latlngs[0])) {
-                    coords = latlngs[0].map(ll => [ll.lat, ll.lng]);
-                } else {
-                    coords = latlngs.map(ll => [ll.lat, ll.lng]);
-                }
-                insideActive = isPointInPolygon(clickedPoint, coords);
-            } else if (localidadRef.current === 'ruu' && boundaryLayersRef.current.ruu) {
-                let latlngs = boundaryLayersRef.current.ruu.getLatLngs();
-                if (Array.isArray(latlngs[0])) {
-                    coords = latlngs[0].map(ll => [ll.lat, ll.lng]);
+                    if (Array.isArray(latlngs[0][0])) {
+                        coords = latlngs[0][0].map(ll => [ll.lat, ll.lng]);
+                    } else {
+                        coords = latlngs[0].map(ll => [ll.lat, ll.lng]);
+                    }
                 } else {
                     coords = latlngs.map(ll => [ll.lat, ll.lng]);
                 }
@@ -198,42 +275,42 @@ export default function MapComponent({
     // 3. Pan and update styles when Localidad changes
     useEffect(() => {
         const map = mapRef.current;
-        const usmePoly = boundaryLayersRef.current.usme;
-        const ruuPoly = boundaryLayersRef.current.ruu;
-        const usmeTooltip = tooltipLayersRef.current.usme;
-        const ruuTooltip = tooltipLayersRef.current.ruu;
+        if (!map) return;
 
-        if (!map || !usmePoly || !ruuPoly) return;
+        // Update GeoJSON styles dynamically
+        if (localidadesLayerRef.current) {
+            localidadesLayerRef.current.setStyle((feature) => {
+                const locName = feature.properties.LocNombre.toUpperCase();
+                if (locName.includes('USME')) {
+                    const isActive = localidad === 'usme';
+                    return {
+                        color: '#6366f1',
+                        weight: isActive ? 3.5 : 1.5,
+                        fillOpacity: isActive ? 0.05 : 0.015,
+                        dashArray: isActive ? null : '3, 6'
+                    };
+                } else if (locName.includes('RAFAEL URIBE')) {
+                    const isActive = localidad === 'ruu';
+                    return {
+                        color: '#a855f7',
+                        weight: isActive ? 3.5 : 1.5,
+                        fillOpacity: isActive ? 0.05 : 0.015,
+                        dashArray: isActive ? null : '3, 6'
+                    };
+                } else {
+                    return {
+                        color: 'rgba(255, 255, 255, 0.22)',
+                        weight: 1,
+                        fillOpacity: 0.005,
+                        dashArray: '2, 4'
+                    };
+                }
+            });
+        }
 
         if (localidad === 'usme') {
-            usmePoly.setStyle({
-                weight: 4,
-                fillOpacity: 0.08,
-                dashArray: null
-            });
-            ruuPoly.setStyle({
-                weight: 2,
-                fillOpacity: 0.02,
-                dashArray: '5, 10'
-            });
-            if (usmeTooltip) usmeTooltip.setOpacity(1.0);
-            if (ruuTooltip) ruuTooltip.setOpacity(0.5);
-
             map.flyTo([4.506, -74.115], 13, { duration: 1.5 });
         } else {
-            usmePoly.setStyle({
-                weight: 2,
-                fillOpacity: 0.02,
-                dashArray: '5, 10'
-            });
-            ruuPoly.setStyle({
-                weight: 4,
-                fillOpacity: 0.08,
-                dashArray: null
-            });
-            if (usmeTooltip) usmeTooltip.setOpacity(0.5);
-            if (ruuTooltip) ruuTooltip.setOpacity(1.0);
-
             map.flyTo([4.575, -74.122], 14, { duration: 1.5 });
         }
     }, [localidad]);
