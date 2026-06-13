@@ -91,7 +91,7 @@ export default function MapComponent({
         }).addTo(map);
 
         // Fetch official Bogotá Localities GeoJSON
-        fetch('/localidades.json')
+        fetch(`${import.meta.env.BASE_URL}localidades.json`)
             .then(res => res.json())
             .then(data => {
                 const geoJsonLayer = L.geoJSON(data, {
