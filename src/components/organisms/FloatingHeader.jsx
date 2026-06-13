@@ -1,5 +1,6 @@
 import React from 'react';
 import ToggleGroup from '../molecules/ToggleGroup';
+import { localitiesMap } from '../../data/bikeSegments';
 
 export default function FloatingHeader({
     localidad,
@@ -7,11 +8,6 @@ export default function FloatingHeader({
     viewMode,
     onViewModeChange
 }) {
-    const localidadOpts = [
-        { value: 'usme', label: 'Usme' },
-        { value: 'ruu', label: 'Rafael Uribe' }
-    ];
-
     const viewModeOpts = [
         { value: 'citizen', label: 'Ciudadano' },
         { value: 'tech', label: 'Científico' }
@@ -29,12 +25,21 @@ export default function FloatingHeader({
             </div>
             
             <div className="header-controls">
-                <ToggleGroup
-                    options={localidadOpts}
-                    activeValue={localidad}
-                    onChange={onLocalidadChange}
-                    ariaLabel="Selección de Localidad"
-                />
+                <div className="locality-select-wrapper">
+                    <i className="fa-solid fa-map-location-dot select-icon"></i>
+                    <select 
+                        value={localidad} 
+                        onChange={(e) => onLocalidadChange(e.target.value)}
+                        className="minimal-select"
+                        aria-label="Selección de Localidad"
+                    >
+                        {Object.keys(localitiesMap).map(key => (
+                            <option key={key} value={key}>
+                                {localitiesMap[key].name}
+                            </option>
+                        ))}
+                    </select>
+                </div>
                 
                 <ToggleGroup
                     options={viewModeOpts}

@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import L from 'leaflet';
-import { usmeCoords, ruuCoords } from '../../data/bikeSegments';
+import { localitiesMap } from '../../data/bikeSegments';
 import { evaluateCoordinateRisk } from '../../utils/riskCalculator';
 
 // Helper to check if a point is inside a polygon (Ray-Casting Algorithm)

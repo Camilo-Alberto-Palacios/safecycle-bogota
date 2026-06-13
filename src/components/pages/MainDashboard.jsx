@@ -7,7 +7,7 @@ import StatsPanel from '../organisms/StatsPanel';
 import MapComponent from '../organisms/MapComponent';
 import DashboardLayout from '../templates/DashboardLayout';
 
-import { bikeSegments as initialSegments } from '../../data/bikeSegments';
+import { bikeSegments as initialSegments, localitiesMap } from '../../data/bikeSegments';
 import { 
     calculateRisk, 
     getRecommendations, 
@@ -99,11 +99,12 @@ export default function MainDashboard() {
         const nearest = findNearestSegment(latlng, segments);
         
         const auditId = 'custom_audit';
+        const activeLocalityConfig = localitiesMap[localidad];
         const customSeg = {
             id: auditId,
             name: `Calle Auditada (Lat: ${latlng.lat.toFixed(4)}, Lng: ${latlng.lng.toFixed(4)})`,
-            localidad: localidad === 'usme' ? 'Usme (05)' : 'Rafael Uribe Uribe (18)',
-            upz: nearest ? nearest.upz : (localidad === 'usme' ? 'UPZ 57 - Gran Yomasa' : 'UPZ 39 - Quiroga'),
+            localidad: activeLocalityConfig ? activeLocalityConfig.fullName : 'Usme (05)',
+            upz: nearest ? nearest.upz : (localidad === 'usme' ? 'UPZ 57 - Gran Yomasa' : (localidad === 'ruu' ? 'UPZ 39 - Quiroga' : 'UPZ General')),
             baselineCrime: nearest ? nearest.baselineCrime : 'Medio',
             coordinates: [[latlng.lat, latlng.lng]],
             lightingType: 'Sodio',

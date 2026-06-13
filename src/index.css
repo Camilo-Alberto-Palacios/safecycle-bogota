@@ -172,13 +172,54 @@ h1, h2, h3, h4 {
     align-items: center;
 }
 
-.toggle-group-label {
-    font-size: 0.8rem;
-    font-weight: 600;
-    color: var(--text-secondary);
+.locality-select-wrapper {
     display: flex;
     align-items: center;
-    gap: 0.25rem;
+    background: rgba(15, 23, 42, 0.55);
+    border: 1px solid var(--border-color);
+    padding: 0.28rem 0.8rem;
+    border-radius: 20px;
+    gap: 0.4rem;
+    transition: var(--transition-smooth);
+}
+
+.locality-select-wrapper:hover {
+    border-color: rgba(255, 255, 255, 0.15);
+}
+
+.select-icon {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+}
+
+.minimal-select {
+    background: transparent;
+    border: none;
+    color: var(--text-primary);
+    font-family: var(--font-heading);
+    font-weight: 600;
+    font-size: 0.75rem;
+    outline: none;
+    cursor: pointer;
+    padding-right: 0.15rem;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+}
+
+.locality-select-wrapper::after {
+    content: "\f078";
+    font-family: "Font Awesome 6 Free";
+    font-weight: 900;
+    font-size: 0.6rem;
+    color: var(--text-secondary);
+    pointer-events: none;
+    margin-left: 0.1rem;
+}
+
+.minimal-select option {
+    background: #0f172a;
+    color: var(--text-primary);
 }
 
 .localidad-toggle {

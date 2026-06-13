@@ -1,29 +1,27 @@
 // Boundaries and segment data for SafeCycle Bogotá
 
-export const usmeCoords = [
-    [4.553, -74.105],
-    [4.552, -74.114],
-    [4.528, -74.132],
-    [4.492, -74.135],
-    [4.465, -74.132],
-    [4.465, -74.122],
-    [4.482, -74.102],
-    [4.502, -74.095],
-    [4.525, -74.095],
-    [4.542, -74.099]
-];
-
-export const ruuCoords = [
-    [4.597, -74.101],
-    [4.591, -74.120],
-    [4.580, -74.130],
-    [4.565, -74.132],
-    [4.551, -74.113],
-    [4.551, -74.109],
-    [4.562, -74.105],
-    [4.575, -74.100],
-    [4.590, -74.098]
-];
+export const localitiesMap = {
+    usaquen: { code: '01', name: 'Usaquén', fullName: 'Usaquén (01)', center: [4.710, -74.030], zoom: 13, color: '#38bdf8' },
+    chapinero: { code: '02', name: 'Chapinero', fullName: 'Chapinero (02)', center: [4.655, -74.058], zoom: 14, color: '#f43f5e' },
+    santafe: { code: '03', name: 'Santa Fe', fullName: 'Santa Fe (03)', center: [4.598, -74.068], zoom: 14, color: '#10b981' },
+    sancristobal: { code: '04', name: 'San Cristóbal', fullName: 'San Cristóbal (04)', center: [4.565, -74.085], zoom: 13, color: '#eab308' },
+    usme: { code: '05', name: 'Usme', fullName: 'Usme (05)', center: [4.506, -74.115], zoom: 13, color: '#6366f1' },
+    tunjuelito: { code: '06', name: 'Tunjuelito', fullName: 'Tunjuelito (06)', center: [4.580, -74.135], zoom: 14, color: '#84cc16' },
+    bosa: { code: '07', name: 'Bosa', fullName: 'Bosa (07)', center: [4.620, -74.190], zoom: 13, color: '#06b6d4' },
+    kennedy: { code: '08', name: 'Kennedy', fullName: 'Kennedy (08)', center: [4.625, -74.150], zoom: 13, color: '#ec4899' },
+    fontibon: { code: '09', name: 'Fontibón', fullName: 'Fontibón (09)', center: [4.670, -74.145], zoom: 13, color: '#f97316' },
+    engativa: { code: '10', name: 'Engativá', fullName: 'Engativá (10)', center: [4.700, -74.115], zoom: 13, color: '#3b82f6' },
+    suba: { code: '11', name: 'Suba', fullName: 'Suba (11)', center: [4.735, -74.085], zoom: 13, color: '#14b8a6' },
+    barriosunidos: { code: '12', name: 'Barrios Unidos', fullName: 'Barrios Unidos (12)', center: [4.665, -74.075], zoom: 14, color: '#a855f7' },
+    teusaquillo: { code: '13', name: 'Teusaquillo', fullName: 'Teusaquillo (13)', center: [4.640, -74.085], zoom: 14, color: '#d946ef' },
+    losmartires: { code: '14', name: 'Los Mártires', fullName: 'Los Mártires (14)', center: [4.605, -74.085], zoom: 14, color: '#64748b' },
+    antonionarino: { code: '15', name: 'Antonio Nariño', fullName: 'Antonio Nariño (15)', center: [4.590, -74.105], zoom: 14, color: '#06b6d4' },
+    puentearanda: { code: '16', name: 'Puente Aranda', fullName: 'Puente Aranda (16)', center: [4.615, -74.115], zoom: 14, color: '#f59e0b' },
+    lacandelaria: { code: '17', name: 'La Candelaria', fullName: 'La Candelaria (17)', center: [4.597, -74.072], zoom: 15, color: '#ef4444' },
+    ruu: { code: '18', name: 'Rafael Uribe', fullName: 'Rafael Uribe Uribe (18)', center: [4.575, -74.122], zoom: 14, color: '#a855f7' },
+    ciudadbolivar: { code: '19', name: 'Ciudad Bolívar', fullName: 'Ciudad Bolívar (19)', center: [4.520, -74.150], zoom: 13, color: '#f43f5e' },
+    sumapaz: { code: '20', name: 'Sumapaz', fullName: 'Sumapaz (20)', center: [4.030, -74.220], zoom: 10, color: '#10b981' }
+};
 
 export const bikeSegments = {
     // ==========================================
