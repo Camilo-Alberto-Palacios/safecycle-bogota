@@ -8,6 +8,7 @@ import MapComponent from '../organisms/MapComponent';
 import DashboardLayout from '../templates/DashboardLayout';
 
 import { bikeSegments as initialSegments, localitiesMap } from '../../data/bikeSegments';
+import { constructionZones } from '../../data/constructionZones';
 import { 
     calculateRisk, 
     getRecommendations, 
@@ -32,7 +33,8 @@ export default function MainDashboard() {
         watts: 100,
         visibility: 2,
         guardianCai: false,
-        guardianRuta: false
+        guardianRuta: false,
+        showConstruction: true
     });
 
     // 4. Route Planning State
@@ -55,6 +57,7 @@ export default function MainDashboard() {
 
     // 6. Handle localidad switch
     const handleLocalidadChange = (loc) => {
+        if (loc === localidad) return;
         setLocalidad(loc);
         handleClearRoute();
     };
@@ -157,6 +160,27 @@ export default function MainDashboard() {
         }
     };
 
+    // 10b. Handle origin/destination selection from geocoding autocomplete or GPS
+    const handleSelectOriginLocation = (coords, name) => {
+        setRoutePoints(prev => ({
+            ...prev,
+            origin: coords
+        }));
+        if (name !== undefined) {
+            setOriginInput(name);
+        }
+    };
+
+    const handleSelectDestLocation = (coords, name) => {
+        setRoutePoints(prev => ({
+            ...prev,
+            destination: coords
+        }));
+        if (name !== undefined) {
+            setDestInput(name);
+        }
+    };
+
     // 11. Nominatim Geocoding Fetcher
     const geocodeAddress = async (addressText) => {
         const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(addressText)},+Bogota,+Colombia&format=json&limit=1`;
@@ -202,35 +226,39 @@ export default function MainDashboard() {
         setSelectedSegmentId(null); // Deselect segment when plotting a route
         const coordRegex = /^(-?\d+\.\d+),\s*(-?\d+\.\d+)$/;
 
-        let originCoord = null;
-        const originMatch = originInput.match(coordRegex);
-        if (originMatch) {
-            originCoord = { lat: parseFloat(originMatch[1]), lng: parseFloat(originMatch[2]) };
-        } else {
-            const result = await geocodeAddress(originInput);
-            if (result) {
-                originCoord = { lat: result.lat, lng: result.lng };
-                setOriginInput(result.name);
+        let originCoord = routePoints.origin;
+        if (!originCoord) {
+            const originMatch = originInput.match(coordRegex);
+            if (originMatch) {
+                originCoord = { lat: parseFloat(originMatch[1]), lng: parseFloat(originMatch[2]) };
             } else {
-                alert(`No se pudo encontrar la ubicación de origen: "${originInput}"`);
-                setIsLoading(false);
-                return;
+                const result = await geocodeAddress(originInput);
+                if (result) {
+                    originCoord = { lat: result.lat, lng: result.lng };
+                    setOriginInput(result.name);
+                } else {
+                    alert(`No se pudo encontrar la ubicación de origen: "${originInput}"`);
+                    setIsLoading(false);
+                    return;
+                }
             }
         }
 
-        let destCoord = null;
-        const destMatch = destInput.match(coordRegex);
-        if (destMatch) {
-            destCoord = { lat: parseFloat(destMatch[1]), lng: parseFloat(destMatch[2]) };
-        } else {
-            const result = await geocodeAddress(destInput);
-            if (result) {
-                destCoord = { lat: result.lat, lng: result.lng };
-                setDestInput(result.name);
+        let destCoord = routePoints.destination;
+        if (!destCoord) {
+            const destMatch = destInput.match(coordRegex);
+            if (destMatch) {
+                destCoord = { lat: parseFloat(destMatch[1]), lng: parseFloat(destMatch[2]) };
             } else {
-                alert(`No se pudo encontrar la ubicación de destino: "${destInput}"`);
-                setIsLoading(false);
-                return;
+                const result = await geocodeAddress(destInput);
+                if (result) {
+                    destCoord = { lat: result.lat, lng: result.lng };
+                    setDestInput(result.name);
+                } else {
+                    alert(`No se pudo encontrar la ubicación de destino: "${destInput}"`);
+                    setIsLoading(false);
+                    return;
+                }
             }
         }
 
@@ -246,7 +274,13 @@ export default function MainDashboard() {
 
         const calculated = routesData.map((route, idx) => {
             const leafletCoords = route.geometry.coordinates.map(pt => [pt[1], pt[0]]);
-            const riskDetails = calculateRouteAverageRisk(leafletCoords, segments, simulationState);
+            const riskDetails = calculateRouteAverageRisk(
+                leafletCoords, 
+                segments, 
+                simulationState, 
+                constructionZones, 
+                simulationState.showConstruction
+            );
             
             return {
                 id: `route_${idx}`,
@@ -283,23 +317,37 @@ export default function MainDashboard() {
     if (activeRoute) {
         // Evaluate active route risk
         const riskLevel = activeRoute.avgRiskScore >= 7.0 ? 'Alto' : (activeRoute.avgRiskScore >= 3.8 ? 'Medio' : 'Bajo');
+        
+        let routeConstructionImpact = 0;
+        if (simulationState.showConstruction) {
+            const hasConstructionOnRoute = constructionZones.some(zone => {
+                return activeRoute.coordinates.some(pt => {
+                    const distDeg = Math.sqrt(Math.pow(pt[0] - zone.lat, 2) + Math.pow(pt[1] - zone.lng, 2));
+                    return (distDeg * 111000) <= zone.radius;
+                });
+            });
+            if (hasConstructionOnRoute) {
+                routeConstructionImpact = 1.8;
+            }
+        }
+
         currentPrediction = {
             score: activeRoute.avgRiskScore,
             level: riskLevel,
             shaps: {
-                // Route level shaps can be approximated or aggregated. We display default state or simulation inputs impact.
                 'Iluminación': simulationState.lightingType === 'Sodio' ? 0.7 : -0.8,
                 'Potencia Luz': 0.4 - ((simulationState.watts - 50) / 200) * 1.1,
                 'Clima IDIGER': simulationState.weather === 'lluvia' ? 1.4 : -0.3,
                 'Visibilidad CPTED': simulationState.visibility === 1 ? 0.9 : (simulationState.visibility === 3 ? -1.0 : 0.0),
-                'Guardianes CAI/Ruta': (simulationState.guardianCai ? -1.3 : 0.0) + (simulationState.guardianRuta ? -0.9 : 0.0)
+                'Guardianes CAI/Ruta': (simulationState.guardianCai ? -1.3 : 0.0) + (simulationState.guardianRuta ? -0.9 : 0.0),
+                'Frente Obra (IDU)': routeConstructionImpact
             }
         };
-        recommendations = getRouteRecommendations(activeRoute, simulationState, generatedRoutes);
+        recommendations = getRouteRecommendations(activeRoute, simulationState, generatedRoutes, constructionZones, simulationState.showConstruction);
     } else if (selectedSegmentId && segments[selectedSegmentId]) {
         // Evaluate segment risk
         const segment = segments[selectedSegmentId];
-        currentPrediction = calculateRisk(segment);
+        currentPrediction = calculateRisk(segment, constructionZones, simulationState.showConstruction);
         recommendations = getRecommendations(segment, currentPrediction, simulationState);
     }
 
@@ -329,6 +377,8 @@ export default function MainDashboard() {
                     onSelectRoute={setActiveRouteId}
                     simulationState={simulationState}
                     bikeSegments={segments}
+                    constructionZones={constructionZones}
+                    showConstruction={simulationState.showConstruction}
                 />
             }
             routePlanner={
@@ -343,6 +393,8 @@ export default function MainDashboard() {
                     onClearRoute={handleClearRoute}
                     hasRoute={generatedRoutes.length > 0}
                     isLoading={isLoading}
+                    onSelectOriginLocation={handleSelectOriginLocation}
+                    onSelectDestLocation={handleSelectDestLocation}
                 />
             }
             simulatorPanel={

@@ -1,6 +1,24 @@
-// Risk Calculator Engine for SafeCycle Bogotá (CPTED + Historical Crime)
+// Risk Calculator Engine for SafeCycle Bogotá (CPTED + Historical Crime + Active Construction Zones)
 
-export function calculateRisk(segment) {
+// Helper para calcular el impacto de riesgo por frentes de obra IDU
+export function getConstructionRiskImpact(lat, lng, constructionZones = [], enabled = true) {
+    if (!enabled || !constructionZones || constructionZones.length === 0) return 0;
+    
+    let totalImpact = 0;
+    constructionZones.forEach(zone => {
+        // Distancia aproximada en metros: 1 grado ≈ 111,000 metros
+        const distDeg = Math.sqrt(Math.pow(lat - zone.lat, 2) + Math.pow(lng - zone.lng, 2));
+        const distMeters = distDeg * 111000;
+        if (distMeters <= zone.radius) {
+            totalImpact += zone.riskWeight;
+        }
+    });
+    
+    // Limitamos el impacto máximo de obras a un incremento de +2.5
+    return Math.min(2.5, totalImpact);
+}
+
+export function calculateRisk(segment, constructionZones = [], showConstruction = true) {
     const baseValue = 5.0;
 
     // A. Historic Crime Baseline (SIEDCO)
@@ -29,8 +47,13 @@ export function calculateRisk(segment) {
     const shapRuta = segment.guardianRuta ? -0.9 : 0.0;
     const shapGuardians = shapCai + shapRuta;
 
+    // G. Frente de Obra (IDU)
+    // Calculado en las coordenadas de inicio del tramo
+    const startCoord = segment.coordinates[0];
+    const shapConstruction = getConstructionRiskImpact(startCoord[0], startCoord[1], constructionZones, showConstruction);
+
     // Total risk score
-    let totalScore = baseValue + shapCrime + shapWeather + shapLightingTech + shapLightingPower + shapVisibility + shapGuardians;
+    let totalScore = baseValue + shapCrime + shapWeather + shapLightingTech + shapLightingPower + shapVisibility + shapGuardians + shapConstruction;
     totalScore = Math.max(0.5, Math.min(9.5, totalScore));
 
     let level = 'Bajo';
@@ -46,7 +69,8 @@ export function calculateRisk(segment) {
             'Tipo Luz (UAESP)': shapLightingTech,
             'Potencia (UAESP)': shapLightingPower,
             'Visibilidad (CPTED)': shapVisibility,
-            'Guardianes (CAI/Ruta)': shapGuardians
+            'Guardianes (CAI/Ruta)': shapGuardians,
+            'Frente Obra (IDU)': shapConstruction
         }
     };
 }
@@ -72,7 +96,7 @@ export function findNearestSegment(latlng, bikeSegments) {
 }
 
 // Evaluate coordinate risk using current simulation state
-export function evaluateCoordinateRisk(lat, lng, bikeSegments, simulationState) {
+export function evaluateCoordinateRisk(lat, lng, bikeSegments, simulationState, constructionZones = [], showConstruction = true) {
     const nearest = findNearestSegment({ lat, lng }, bikeSegments);
     const baseValue = 5.0;
 
@@ -95,7 +119,10 @@ export function evaluateCoordinateRisk(lat, lng, bikeSegments, simulationState) 
     const shapCai = guardianCai ? -1.3 : 0.0;
     const shapRuta = guardianRuta ? -0.9 : 0.0;
 
-    let score = baseValue + shapCrime + shapWeather + shapLightingTech + shapLightingPower + shapVisibility + (shapCai + shapRuta);
+    // Frente de Obra (IDU)
+    const shapConstruction = getConstructionRiskImpact(lat, lng, constructionZones, showConstruction);
+
+    let score = baseValue + shapCrime + shapWeather + shapLightingTech + shapLightingPower + shapVisibility + (shapCai + shapRuta) + shapConstruction;
     score = Math.max(0.5, Math.min(9.5, score));
 
     let level = 'Bajo';
@@ -106,7 +133,7 @@ export function evaluateCoordinateRisk(lat, lng, bikeSegments, simulationState) 
 }
 
 // Calculate the average risk and max risk levels across route coordinates
-export function calculateRouteAverageRisk(coords, bikeSegments, simulationState) {
+export function calculateRouteAverageRisk(coords, bikeSegments, simulationState, constructionZones = [], showConstruction = true) {
     let totalScore = 0;
     let maxScore = 0;
     const step = Math.max(1, Math.floor(coords.length / 20)); // Sample coordinates
@@ -114,7 +141,7 @@ export function calculateRouteAverageRisk(coords, bikeSegments, simulationState)
     
     for (let i = 0; i < coords.length; i += step) {
         const pt = coords[i];
-        const risk = evaluateCoordinateRisk(pt[0], pt[1], bikeSegments, simulationState);
+        const risk = evaluateCoordinateRisk(pt[0], pt[1], bikeSegments, simulationState, constructionZones, showConstruction);
         const scoreNum = parseFloat(risk.score);
         totalScore += scoreNum;
         if (scoreNum > maxScore) {
@@ -181,8 +208,16 @@ export function getRecommendations(segment, prediction, simulationState) {
         });
     }
 
+    // 6. Recomendación de frentes de obra IDU
+    if (prediction.shaps && prediction.shaps['Frente Obra (IDU)'] > 0) {
+        recs.push({
+            text: '<strong>Frente de Obra Vial (IDU):</strong> Sector con polisombras y restricciones de paso que bloquean la vigilancia natural. Se recomienda redoblar la alerta, usar luces de alta potencia en la bicicleta y transitar con precaución en desvíos temporales.',
+            warning: true
+        });
+    }
+
     // Default good feedback if segment has low risk
-    if (prediction.level === 'Bajo') {
+    if (prediction.level === 'Bajo' && (!prediction.shaps || prediction.shaps['Frente Obra (IDU)'] === 0)) {
         recs.push({
             text: '<strong>Entorno Seguro:</strong> El diseño físico actual (luminarias eficientes y visibilidad óptima) cumple con las directrices internacionales CPTED.',
             warning: false
@@ -193,7 +228,7 @@ export function getRecommendations(segment, prediction, simulationState) {
 }
 
 // Generate recommendations specific to a route
-export function getRouteRecommendations(route, simulationState, generatedRoutes) {
+export function getRouteRecommendations(route, simulationState, generatedRoutes, constructionZones = [], showConstruction = true) {
     const recs = [];
     const { weather, lightingType, watts } = simulationState;
 
@@ -226,6 +261,21 @@ export function getRouteRecommendations(route, simulationState, generatedRoutes)
     if (weather === 'lluvia') {
         recs.push({
             text: '<strong>Alerta Clima:</strong> La lluvia reduce el flujo peatonal. Si viajas en estas condiciones, prefiere rutas principales con patrullaje activo.',
+            warning: true
+        });
+    }
+
+    // Obras IDU en la ruta
+    const hasConstructionOnRoute = showConstruction && constructionZones.some(zone => {
+        return route.coordinates.some(pt => {
+            const distDeg = Math.sqrt(Math.pow(pt[0] - zone.lat, 2) + Math.pow(pt[1] - zone.lng, 2));
+            return (distDeg * 111000) <= zone.radius;
+        });
+    });
+
+    if (hasConstructionOnRoute) {
+        recs.push({
+            text: '<strong>Frentes de Obra Activos (IDU):</strong> Esta ruta atraviesa zonas de obra con desvíos y barreras físicas. Extrema precauciones por presencia de maquinaria y polisombras.',
             warning: true
         });
     }

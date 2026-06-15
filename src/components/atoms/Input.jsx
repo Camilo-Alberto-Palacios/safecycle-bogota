@@ -6,7 +6,8 @@ export default function Input({
     placeholder = '', 
     id, 
     className = '',
-    type = 'text' 
+    type = 'text',
+    ...rest
 }) {
     return (
         <input
@@ -16,6 +17,7 @@ export default function Input({
             onChange={onChange}
             placeholder={placeholder}
             className={`custom-input ${className}`}
+            {...rest}
         />
     );
 }

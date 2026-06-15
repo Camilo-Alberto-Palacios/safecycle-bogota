@@ -140,11 +140,11 @@ export default function SimulatorPanel({
                     </div>
                 </div>
 
-                {/* Guardians */}
+                {/* Guardians & Construction */}
                 <div className="control-group">
                     <label className="control-label">
                         <span>
-                            <i className="fa-solid fa-shield-halved text-purple"></i> Guardianes del Entorno
+                            <i className="fa-solid fa-shield-halved text-purple"></i> Factores de Entorno y Seguridad
                         </span>
                     </label>
                     <div className="toggle-card">
@@ -168,6 +168,17 @@ export default function SimulatorPanel({
                                 id="check-guardian-ruta"
                                 checked={simulationState.guardianRuta}
                                 onChange={(val) => onSimulationStateChange('guardianRuta', val)}
+                            />
+                        </div>
+                        <div className="toggle-item">
+                            <div className="toggle-text">
+                                <span className="toggle-title">Frentes de Obra (IDU)</span>
+                                <span className="toggle-desc">Simular riesgo temporal de construcciones</span>
+                            </div>
+                            <Switch
+                                id="check-show-construction"
+                                checked={simulationState.showConstruction !== false}
+                                onChange={(val) => onSimulationStateChange('showConstruction', val)}
                             />
                         </div>
                     </div>

@@ -12,7 +12,9 @@ export default function RoutePlanner({
     onCalculateRoute,
     onClearRoute,
     hasRoute,
-    isLoading
+    isLoading,
+    onSelectOriginLocation,
+    onSelectDestLocation
 }) {
     return (
         <div className="route-planner-card">
@@ -31,6 +33,8 @@ export default function RoutePlanner({
                 onSelectOnMap={() => onSelectLocationModeChange('origin')}
                 isSelecting={selectingLocationMode === 'origin'}
                 title="Fijar origen en el mapa"
+                onSelectLocation={onSelectOriginLocation}
+                showGpsButton={true}
             />
             
             <FormField
@@ -41,6 +45,8 @@ export default function RoutePlanner({
                 onSelectOnMap={() => onSelectLocationModeChange('destination')}
                 isSelecting={selectingLocationMode === 'destination'}
                 title="Fijar destino en el mapa"
+                onSelectLocation={onSelectDestLocation}
+                showGpsButton={false}
             />
             
             <div className="route-buttons-row">

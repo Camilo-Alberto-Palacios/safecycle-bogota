@@ -37,7 +37,9 @@ export default function MapComponent({
     activeRouteId,
     onSelectRoute,
     simulationState,
-    bikeSegments
+    bikeSegments,
+    constructionZones = [],
+    showConstruction = true
 }) {
     const mapContainerRef = useRef(null);
     const mapRef = useRef(null);
@@ -47,6 +49,7 @@ export default function MapComponent({
     const routeLayersRef = useRef([]);
     const routeMarkersRef = useRef({});
     const customAuditMarkerRef = useRef(null);
+    const constructionLayersRef = useRef([]);
 
     // Keep refs of callbacks to avoid re-triggering effects
     const callbacksRef = useRef({});
@@ -178,6 +181,12 @@ export default function MapComponent({
                                 }
                             },
                             click: (e) => {
+                                if (selectingModeRef.current) {
+                                    L.DomEvent.stopPropagation(e);
+                                    callbacksRef.current.onLocationSelect(e.latlng, selectingModeRef.current);
+                                    return;
+                                }
+
                                 const name = feature.properties.LocNombre.toUpperCase();
                                 if (name.includes('USME')) {
                                     callbacksRef.current.onLocalidadChange('usme');
@@ -386,6 +395,89 @@ export default function MapComponent({
             customAuditMarkerRef.current = marker;
         }
     }, [selectedSegmentId, bikeSegments.custom_audit]);
+
+    // 5b. Update active construction zones overlays on the map
+    useEffect(() => {
+        const map = mapRef.current;
+        if (!map) return;
+
+        // Clear existing construction layers
+        constructionLayersRef.current.forEach(layer => {
+            map.removeLayer(layer);
+        });
+        constructionLayersRef.current = [];
+
+        if (!showConstruction) return;
+
+        constructionZones.forEach(zone => {
+            // 1. Circle representing the impact radius
+            const circle = L.circle([zone.lat, zone.lng], {
+                radius: zone.radius,
+                color: '#f97316', // Orange
+                fillColor: '#f97316',
+                fillOpacity: 0.18,
+                weight: 1.5,
+                dashArray: '5, 5',
+                interactive: true
+            });
+
+            // 2. Custom marker at the center with a construction icon
+            const marker = L.marker([zone.lat, zone.lng], {
+                icon: L.divIcon({
+                    className: 'construction-marker',
+                    html: `
+                        <div style="
+                            width: 28px;
+                            height: 28px;
+                            background: #f97316;
+                            border: 2px solid #fff;
+                            border-radius: 50%;
+                            display: flex;
+                            align-items: center;
+                            justify-content: center;
+                            color: #fff;
+                            box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+                            animation: pulseGlow 2s infinite alternate;
+                        ">
+                            <i class="fa-solid fa-person-digging" style="font-size: 13px;"></i>
+                        </div>
+                    `,
+                    iconSize: [28, 28],
+                    iconAnchor: [14, 14]
+                })
+            });
+
+            // Bind detailed popup
+            const popupContent = `
+                <div style="color: #f8fafc; font-family: var(--font-body); font-size: 0.78rem; padding: 0.25rem; min-width: 200px;">
+                    <h4 style="font-family: var(--font-heading); font-size: 0.85rem; font-weight: 700; margin-bottom: 0.35rem; color: #f97316; display: flex; align-items: center; gap: 0.35rem;">
+                        <i class="fa-solid fa-triangle-exclamation"></i> Zona de Obra Activa
+                    </h4>
+                    <p style="margin: 0 0 0.4rem 0; font-weight: 600; color: #f1f5f9;">${zone.name}</p>
+                    <p style="margin: 0 0 0.4rem 0; font-size: 0.7rem; color: #94a3b8;"><b>Contratista:</b> ${zone.contratista}</p>
+                    <p style="margin: 0 0 0.4rem 0; font-size: 0.72rem; color: #cbd5e1; line-height: 1.35;">${zone.description}</p>
+                    <div style="display: flex; justify-content: space-between; border-top: 1px solid rgba(255,255,255,0.08); padding-top: 0.4rem; margin-top: 0.4rem; font-size: 0.65rem; color: #94a3b8;">
+                        <span><b>Fin Estimado:</b> ${zone.endDate}</span>
+                        <span style="color: #ef4444; font-weight: 700;">Riesgo: +${zone.riskWeight.toFixed(1)}</span>
+                    </div>
+                </div>
+            `;
+            
+            circle.bindPopup(popupContent, { className: 'custom-leaflet-popup' });
+            marker.bindPopup(popupContent, { className: 'custom-leaflet-popup' });
+
+            // Tooltip on hover
+            circle.bindTooltip(`<strong>Obra:</strong> ${zone.name}`, { sticky: true, className: 'custom-tooltip' });
+
+            // Add to map
+            circle.addTo(map);
+            marker.addTo(map);
+
+            // Save references
+            constructionLayersRef.current.push(circle);
+            constructionLayersRef.current.push(marker);
+        });
+    }, [constructionZones, showConstruction]);
 
     // 6. Draw route polylines dynamically segmented by CPTED risk
     useEffect(() => {
