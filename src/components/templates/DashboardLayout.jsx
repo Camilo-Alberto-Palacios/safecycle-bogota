@@ -8,7 +8,8 @@ export default function DashboardLayout({
     simulatorPanel,
     resultsPanel,
     statsPanel,
-    viewMode
+    viewMode,
+    citizenSciencePanel
 }) {
     // Drawer open/close states for desktop
     const [leftDrawerOpen, setLeftDrawerOpen] = useState(true);
@@ -51,6 +52,12 @@ export default function DashboardLayout({
                                 {routePlanner}
                                 <div className="drawer-divider"></div>
                                 {simulatorPanel}
+                                {citizenSciencePanel && (
+                                    <>
+                                        <div className="drawer-divider"></div>
+                                        {citizenSciencePanel}
+                                    </>
+                                )}
                             </div>
                             <Button 
                                 variant="secondary"
@@ -96,6 +103,12 @@ export default function DashboardLayout({
                                 {routePlanner}
                                 <div className="drawer-divider"></div>
                                 {simulatorPanel}
+                                {citizenSciencePanel && (
+                                    <>
+                                        <div className="drawer-divider"></div>
+                                        {citizenSciencePanel}
+                                    </>
+                                )}
                             </div>
                         </div>
 
@@ -145,7 +158,7 @@ export default function DashboardLayout({
             {/* Footer - Floating in the bottom of the drawers on desktop or omitted for neatness, let's keep a tiny footer in the drawers or bottom of screen */}
             {!isMobile && (
                 <footer className="floating-footer">
-                    <p><strong>SafeCycle Bogotá v1.0.0 (MVP)</strong> • Semillero Construcción de software para la transformación del territorio</p>
+                    <p><strong>Ruta Clara v1.0.0 (MVP)</strong> • Semillero Construcción de software para la transformación del territorio</p>
                 </footer>
             )}
         </div>

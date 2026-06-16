@@ -16,11 +16,11 @@ export default function FloatingHeader({
     return (
         <header className="app-header floating-header-card">
             <div className="header-logo">
-                <div className="logo-icon">
-                    <i className="fa-solid fa-bicycle"></i>
+                <div className="logo-icon" style={{ background: 'transparent', boxShadow: 'none', borderRadius: '0', animation: 'none' }}>
+                    <img src={`${import.meta.env.BASE_URL}Logo.svg`} alt="Ruta Clara Logo" style={{ width: '32px', height: '32px' }} />
                 </div>
                 <div className="logo-text">
-                    <h1>SafeCycle <span>Bogotá</span></h1>
+                    <h1>Ruta <span>Clara</span></h1>
                 </div>
             </div>
             

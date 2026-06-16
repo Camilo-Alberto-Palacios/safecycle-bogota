@@ -144,6 +144,26 @@ export default function RoutePlanner({
                             onChange={(val) => handleToggle('robberies', val)}
                         />
                     </div>
+                    <div className="layer-switch-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
+                            <i className="fa-solid fa-car text-orange" style={{ marginRight: '0.4rem', width: '12px', color: '#f97316' }}></i> Trancones en Tiempo Real
+                        </span>
+                        <Switch
+                            id="layer-switch-traffic-jams"
+                            checked={mapLayers.trafficJams}
+                            onChange={(val) => handleToggle('trafficJams', val)}
+                        />
+                    </div>
+                    <div className="layer-switch-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
+                            <i className="fa-solid fa-people-group text-accent" style={{ marginRight: '0.4rem', width: '12px' }}></i> Reportes Ciudadanos
+                        </span>
+                        <Switch
+                            id="layer-switch-citizen-reports"
+                            checked={mapLayers.citizenReports}
+                            onChange={(val) => handleToggle('citizenReports', val)}
+                        />
+                    </div>
                 </div>
             </div>
         </div>

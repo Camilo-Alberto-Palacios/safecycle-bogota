@@ -71,7 +71,11 @@ export default function MapComponent({
     bikeSegments,
     constructionZones = [],
     showConstruction = true,
-    mapLayers = { localities: true, cais: true, construction: true, accidents: true, robberies: true }
+    mapLayers = { localities: true, cais: true, construction: true, accidents: true, robberies: true, trafficJams: true, citizenReports: true },
+    trafficJams = [],
+    citizenReports = [],
+    onUpvoteReport,
+    zoomToCoords
 }) {
     const mapContainerRef = useRef(null);
     const mapRef = useRef(null);
@@ -85,6 +89,8 @@ export default function MapComponent({
     const caiLayersRef = useRef([]);
     const robberyLayersRef = useRef([]);
     const accidentLayersRef = useRef([]);
+    const trafficJamLayersRef = useRef([]);
+    const citizenReportLayersRef = useRef([]);
 
     // Keep refs of callbacks to avoid re-triggering effects
     const callbacksRef = useRef({});
@@ -93,7 +99,8 @@ export default function MapComponent({
         onMapAuditClick,
         onLocationSelect,
         onSelectRoute,
-        onLocalidadChange
+        onLocalidadChange,
+        onUpvoteReport
     };
 
     // Keep ref of selecting location mode
@@ -700,6 +707,21 @@ export default function MapComponent({
             const group = L.layerGroup();
             
             const routeCoords = route.coordinates;
+
+            // Build a set of indices affected by traffic jams for this route
+            const jamAffectedIndices = new Set();
+            const jamSeverityMap = {};
+            const jamInfoMap = {};
+            if (route.trafficJamsOnRoute && route.trafficJamsOnRoute.length > 0) {
+                route.trafficJamsOnRoute.forEach(detected => {
+                    detected.affectedSegments.forEach(idx => {
+                        jamAffectedIndices.add(idx);
+                        jamSeverityMap[idx] = detected.severity;
+                        jamInfoMap[idx] = detected;
+                    });
+                });
+            }
+
             for (let i = 0; i < routeCoords.length - 1; i++) {
                 const pt1 = routeCoords[i];
                 const pt2 = routeCoords[i+1];
@@ -707,33 +729,263 @@ export default function MapComponent({
                 const midLat = (pt1[0] + pt2[0]) / 2;
                 const midLng = (pt1[1] + pt2[1]) / 2;
                 
-                const risk = evaluateCoordinateRisk(midLat, midLng, bikeSegments, simulationState, constructionZones, showConstruction);
-                const color = getRiskColor(risk.level);
+                const isJamSegment = jamAffectedIndices.has(i) || jamAffectedIndices.has(i + 1);
                 
-                const polyline = L.polyline([pt1, pt2], {
-                    color: color,
-                    weight: isActive ? 8 : 4,
-                    opacity: isActive ? 0.95 : 0.25,
-                    lineJoin: 'round'
-                });
-                
-                polyline.on('click', (e) => {
-                    L.DomEvent.stopPropagation(e);
-                    callbacksRef.current.onSelectRoute(route.id);
-                });
-                
-                polyline.bindTooltip(`<strong>${route.name}</strong><br>Distancia: ${route.distanceKm} km<br>Riesgo Promedio: ${route.avgRiskScore}`, {
-                    sticky: true,
-                    className: 'custom-tooltip'
-                });
+                if (isActive && isJamSegment && mapLayers.trafficJams) {
+                    // Draw traffic jam highlighted segment
+                    const severity = jamSeverityMap[i] || jamSeverityMap[i + 1] || 'moderado';
+                    const jamColor = severity === 'severo' ? '#dc2626' : (severity === 'leve' ? '#eab308' : '#f97316');
+                    const info = jamInfoMap[i] || jamInfoMap[i + 1];
 
-                group.addLayer(polyline);
+                    // Background glow
+                    const glowLine = L.polyline([pt1, pt2], {
+                        color: jamColor,
+                        weight: 16,
+                        opacity: 0.25,
+                        lineJoin: 'round',
+                        interactive: false
+                    });
+                    group.addLayer(glowLine);
+
+                    // Main dashed line
+                    const jamLine = L.polyline([pt1, pt2], {
+                        color: jamColor,
+                        weight: 10,
+                        opacity: 0.95,
+                        lineJoin: 'round',
+                        dashArray: '12, 8',
+                        className: 'traffic-jam-line-animated'
+                    });
+
+                    jamLine.on('click', (e) => {
+                        L.DomEvent.stopPropagation(e);
+                        callbacksRef.current.onSelectRoute(route.id);
+                    });
+
+                    const jamTooltip = info
+                        ? `<strong>🚗 ${info.jam.name}</strong><br>De: ${info.fromName}<br>A: ${info.toName}<br>Demora: <span style="color:${jamColor};font-weight:700;">+${info.delayMinutes} min</span><br>Severidad: ${severity.charAt(0).toUpperCase() + severity.slice(1)}`
+                        : `<strong>Trancón</strong>`;
+
+                    jamLine.bindTooltip(jamTooltip, {
+                        sticky: true,
+                        className: 'custom-tooltip'
+                    });
+
+                    group.addLayer(jamLine);
+                } else {
+                    // Normal risk-colored segment
+                    const risk = evaluateCoordinateRisk(midLat, midLng, bikeSegments, simulationState, constructionZones, showConstruction, citizenReports);
+                    const color = getRiskColor(risk.level);
+                    
+                    const polyline = L.polyline([pt1, pt2], {
+                        color: color,
+                        weight: isActive ? 8 : 4,
+                        opacity: isActive ? 0.95 : 0.25,
+                        lineJoin: 'round'
+                    });
+                    
+                    polyline.on('click', (e) => {
+                        L.DomEvent.stopPropagation(e);
+                        callbacksRef.current.onSelectRoute(route.id);
+                    });
+                    
+                    polyline.bindTooltip(`<strong>${route.name}</strong><br>Distancia: ${route.distanceKm} km<br>Riesgo Promedio: ${route.avgRiskScore}`, {
+                        sticky: true,
+                        className: 'custom-tooltip'
+                    });
+
+                    group.addLayer(polyline);
+                }
             }
             
             group.addTo(map);
             routeLayersRef.current.push(group);
         });
-    }, [generatedRoutes, activeRouteId, simulationState, bikeSegments]);
+    }, [generatedRoutes, activeRouteId, simulationState, bikeSegments, mapLayers.trafficJams, citizenReports]);
+
+    // 6b. Draw global traffic jam overlay polylines and markers
+    useEffect(() => {
+        const map = mapRef.current;
+        if (!map) return;
+
+        // Clear existing traffic jam layers
+        trafficJamLayersRef.current.forEach(layer => {
+            map.removeLayer(layer);
+        });
+        trafficJamLayersRef.current = [];
+
+        if (!mapLayers.trafficJams) return;
+
+        trafficJams.forEach(jam => {
+            const jamColor = jam.severity === 'severo' ? '#dc2626' : (jam.severity === 'leve' ? '#eab308' : '#f97316');
+            const jamBorder = jam.severity === 'severo' ? '#fca5a5' : (jam.severity === 'leve' ? '#fde047' : '#fdba74');
+
+            // Polyline for the jam corridor
+            const polyline = L.polyline(jam.coordinates, {
+                color: jamColor,
+                weight: 5,
+                opacity: 0.6,
+                dashArray: '8, 6',
+                lineJoin: 'round',
+                className: 'traffic-jam-line-animated'
+            });
+
+            // Marker at the midpoint
+            const midIdx = Math.floor(jam.coordinates.length / 2);
+            const midPt = jam.coordinates[midIdx];
+            const marker = L.marker(midPt, {
+                icon: L.divIcon({
+                    className: 'traffic-jam-marker-wrapper',
+                    html: `
+                        <div style="
+                            width: 28px;
+                            height: 28px;
+                            background: ${jamColor};
+                            border: 2px solid ${jamBorder};
+                            border-radius: 50%;
+                            display: flex;
+                            align-items: center;
+                            justify-content: center;
+                            color: #fff;
+                            box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+                            cursor: pointer;
+                        ">
+                            <i class="fa-solid fa-car" style="font-size: 12px;"></i>
+                        </div>
+                    `,
+                    iconSize: [28, 28],
+                    iconAnchor: [14, 14]
+                })
+            });
+
+            const severityLabel = jam.severity.charAt(0).toUpperCase() + jam.severity.slice(1);
+            const popupContent = `
+                <div style="color: #f8fafc; font-family: var(--font-body); font-size: 0.78rem; padding: 0.25rem; min-width: 220px;">
+                    <h4 style="font-family: var(--font-heading); font-size: 0.85rem; font-weight: 700; margin-bottom: 0.35rem; color: ${jamColor}; display: flex; align-items: center; gap: 0.35rem;">
+                        <i class="fa-solid fa-car"></i> ${jam.name}
+                    </h4>
+                    <p style="margin: 0 0 0.3rem 0; font-weight: 600; color: #f1f5f9;">Congestión Vehicular</p>
+                    <p style="margin: 0 0 0.3rem 0; font-size: 0.72rem; color: #94a3b8;"><b>De:</b> ${jam.fromName}</p>
+                    <p style="margin: 0 0 0.3rem 0; font-size: 0.72rem; color: #94a3b8;"><b>A:</b> ${jam.toName}</p>
+                    <p style="margin: 0 0 0.3rem 0; font-size: 0.72rem; color: #94a3b8;"><b>Severidad:</b> ${severityLabel} • <b>Fuente:</b> ${jam.source}</p>
+                    <div style="display: flex; justify-content: space-between; border-top: 1px solid rgba(255,255,255,0.08); padding-top: 0.4rem; margin-top: 0.4rem; font-size: 0.72rem;">
+                        <span style="color: #94a3b8;"><b>Reportado:</b> ${jam.reportedTime}</span>
+                        <span style="color: ${jamColor}; font-weight: 700;">+${jam.delayMinutes} min</span>
+                    </div>
+                </div>
+            `;
+
+            polyline.bindPopup(popupContent, { className: 'custom-leaflet-popup' });
+            marker.bindPopup(popupContent, { className: 'custom-leaflet-popup' });
+            polyline.bindTooltip(`<strong>Trancón:</strong> ${jam.name} (+${jam.delayMinutes} min)`, { sticky: true, className: 'custom-tooltip' });
+
+            polyline.addTo(map);
+            marker.addTo(map);
+
+            trafficJamLayersRef.current.push(polyline);
+            trafficJamLayersRef.current.push(marker);
+        });
+    }, [trafficJams, mapLayers.trafficJams]);
+
+    // 6c. Draw citizen science reports on the map
+    useEffect(() => {
+        const map = mapRef.current;
+        if (!map) return;
+
+        // Clear existing citizen report layers
+        citizenReportLayersRef.current.forEach(layer => {
+            map.removeLayer(layer);
+        });
+        citizenReportLayersRef.current = [];
+
+        const isShown = mapLayers.citizenReports !== false;
+        if (!isShown) return;
+
+        citizenReports.forEach(report => {
+            const coords = report.properties.coordenadas; // [lat, lng]
+            if (!coords) return;
+
+            const tipo = report.properties.tipo_novedad;
+            const votos = report.properties.numero_votos;
+            const fecha = report.properties.fecha_creacion;
+            const estado = report.properties.estado;
+
+            // Determine color and icon
+            let color = '#f59e0b'; // Amber
+            let icon = 'fa-triangle-exclamation';
+
+            if (tipo.includes('Luminaria') || tipo.includes('lobo')) {
+                color = '#f59e0b'; // Amber
+                icon = 'fa-lightbulb';
+            } else if (tipo.includes('Hueco') || tipo.includes('destructiva')) {
+                color = '#f59e0b'; // Amber
+                icon = 'fa-triangle-exclamation';
+            } else if (tipo.includes('Inseguridad') || tipo.includes('Atraco')) {
+                color = '#991b1b'; // Carmine Red
+                icon = 'fa-hand';
+            }
+
+            const marker = L.marker([coords[0], coords[1]], {
+                icon: L.divIcon({
+                    className: 'citizen-report-marker-wrapper',
+                    html: `
+                        <div class="citizen-report-marker" style="
+                            width: 24px;
+                            height: 24px;
+                            background: ${color};
+                            border: 1.5px solid rgba(255,255,255,0.8);
+                            border-radius: 50%;
+                            display: flex;
+                            align-items: center;
+                            justify-content: center;
+                            color: #fff;
+                            box-shadow: 0 2px 5px rgba(0,0,0,0.5);
+                            cursor: pointer;
+                        ">
+                            <i class="fa-solid ${icon}" style="font-size: 10px;"></i>
+                        </div>
+                    `,
+                    iconSize: [24, 24],
+                    iconAnchor: [12, 12]
+                })
+            });
+
+            // Create flat popup element without massive rounding (max 8px, custom-leaflet-popup-citizen)
+            const div = document.createElement('div');
+            div.style.minWidth = '180px';
+            div.innerHTML = `
+                <div style="font-family: var(--font-body); font-size: 0.78rem;">
+                    <h4 style="font-family: var(--font-heading); font-size: 0.85rem; font-weight: 700; margin-bottom: 0.35rem; color: ${color}; display: flex; align-items: center; gap: 0.35rem;">
+                        <i class="fa-solid ${icon}"></i> ${tipo.split('/')[0].trim()}
+                    </h4>
+                    <p style="margin: 0 0 0.3rem 0; color: var(--text-secondary);"><b>Votos:</b> <span class="vote-count" style="font-weight: 700; color: #f59e0b;">${votos}</span></p>
+                    <p style="margin: 0 0 0.3rem 0; color: var(--text-secondary); font-size: 0.72rem;"><b>Reportado:</b> ${fecha}</p>
+                    <p style="margin: 0 0 0.4rem 0; color: var(--text-secondary); font-size: 0.72rem;"><b>Estado:</b> <span style="text-transform: capitalize; color: #10b981; font-weight: 600;">${estado}</span></p>
+                    <button class="btn-flat btn-flat-primary respaldar-btn" style="width: 100%; font-size: 0.72rem; padding: 0.35rem; border-radius: 6px;">
+                        <i class="fa-solid fa-circle-arrow-up"></i> Respaldar Reporte
+                    </button>
+                </div>
+            `;
+
+            // Attach upvote action
+            const btn = div.querySelector('.respaldar-btn');
+            btn.addEventListener('click', () => {
+                const countSpan = div.querySelector('.vote-count');
+                if (countSpan) {
+                    countSpan.textContent = parseInt(countSpan.textContent) + 1;
+                }
+                btn.disabled = true;
+                btn.innerHTML = '<i class="fa-solid fa-check"></i> Respaldado';
+                callbacksRef.current.onUpvoteReport(report.properties.id);
+            });
+
+            marker.bindPopup(div, { className: 'custom-leaflet-popup-citizen' });
+            marker.bindTooltip(`<strong>Reporte:</strong> ${tipo.split('/')[0]} (Votos: ${votos})`, { sticky: true, className: 'custom-tooltip' });
+
+            marker.addTo(map);
+            citizenReportLayersRef.current.push(marker);
+        });
+    }, [citizenReports, mapLayers.citizenReports]);
 
     // 7. Update segment polyline colors and interaction (For audit mode)
     useEffect(() => {
@@ -753,7 +1005,7 @@ export default function MapComponent({
 
             // Recalculate segment risk using our helper
             const segmentWithState = { ...segment, ...simulationState };
-            const prediction = calculateRisk(segmentWithState, constructionZones, showConstruction);
+            const prediction = calculateRisk(segmentWithState, constructionZones, showConstruction, citizenReports, bikeSegments);
 
             const color = getRiskColor(prediction.level);
             const layer = segmentLayersRef.current[selectedSegmentId];
@@ -766,7 +1018,7 @@ export default function MapComponent({
             layer.options.interactive = true;
             layer.bringToFront();
         }
-    }, [selectedSegmentId, simulationState, bikeSegments]);
+    }, [selectedSegmentId, simulationState, bikeSegments, citizenReports]);
 
     // 8. Auto-resize map when container width/height changes (collapsing drawers)
     useEffect(() => {
@@ -786,6 +1038,14 @@ export default function MapComponent({
         };
     }, []);
 
+    // 9. Zoom to specific coordinates when requested (e.g. from citizen reports panel)
+    useEffect(() => {
+        const map = mapRef.current;
+        if (map && zoomToCoords) {
+            map.flyTo(zoomToCoords, 16, { duration: 1.5 });
+        }
+    }, [zoomToCoords]);
+
     return (
         <div className="map-container-wrapper">
             <div ref={mapContainerRef} style={{ width: '100%', height: '100%', zIndex: 1 }}></div>
@@ -797,6 +1057,7 @@ export default function MapComponent({
                     <span className="legend-item"><span className="color-dot dot-low"></span> Bajo</span>
                     <span className="legend-item"><span className="color-dot dot-mid"></span> Medio</span>
                     <span className="legend-item"><span className="color-dot dot-high"></span> Alto</span>
+                    <span className="legend-item"><span className="color-dot" style={{ background: '#f97316' }}></span> Trancón</span>
                 </div>
             </div>
         </div>

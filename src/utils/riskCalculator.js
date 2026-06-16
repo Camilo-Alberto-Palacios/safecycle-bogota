@@ -1,5 +1,56 @@
 // Risk Calculator Engine for SafeCycle Bogotá (CPTED + Historical Crime + Active Construction Zones)
 
+// Helper to calculate citizen risk impact based on user reports
+export function calcularRiesgoCiudadano(tramoId, citizenReports = [], bikeSegments = {}) {
+    if (!tramoId || !citizenReports || citizenReports.length === 0) return 0;
+    
+    const segment = bikeSegments[tramoId];
+    if (!segment || !segment.coordinates || segment.coordinates.length === 0) return 0;
+    
+    let totalImpact = 0;
+    
+    // Filter active reports
+    const activeReports = citizenReports.filter(r => r.properties && r.properties.estado === 'activo');
+    
+    activeReports.forEach(report => {
+        const reportCoords = report.properties.coordenadas; // [lat, lng]
+        if (!reportCoords) return;
+        
+        // Calculate distance from report to segment's polyline
+        let minDistance = Infinity;
+        segment.coordinates.forEach(pt => {
+            const distDeg = Math.sqrt(Math.pow(pt[0] - reportCoords[0], 2) + Math.pow(pt[1] - reportCoords[1], 2));
+            const distMeters = distDeg * 111000;
+            if (distMeters < minDistance) {
+                minDistance = distMeters;
+            }
+        });
+        
+        // If within 50 meters
+        if (minDistance <= 50) {
+            let baseWeight = 0;
+            const type = report.properties.tipo_novedad;
+            
+            if (type.includes('Luminaria') || type.includes('lobo')) {
+                baseWeight = 0.8;
+            } else if (type.includes('Hueco') || type.includes('destructiva')) {
+                baseWeight = 0.5;
+            } else if (type.includes('Inseguridad') || type.includes('Atraco')) {
+                baseWeight = 1.5;
+            }
+            
+            // Upvoting rule: if > 10 votes, multiply by 1.25
+            if (report.properties.numero_votos > 10) {
+                baseWeight *= 1.25;
+            }
+            
+            totalImpact += baseWeight;
+        }
+    });
+    
+    return totalImpact;
+}
+
 // Helper para calcular el impacto de riesgo por frentes de obra IDU
 export function getConstructionRiskImpact(lat, lng, constructionZones = [], enabled = true) {
     if (!enabled || !constructionZones || constructionZones.length === 0) return 0;
@@ -18,7 +69,7 @@ export function getConstructionRiskImpact(lat, lng, constructionZones = [], enab
     return Math.min(2.5, totalImpact);
 }
 
-export function calculateRisk(segment, constructionZones = [], showConstruction = true) {
+export function calculateRisk(segment, constructionZones = [], showConstruction = true, citizenReports = [], bikeSegments = {}) {
     const baseValue = 5.0;
 
     // A. Historic Crime Baseline (SIEDCO)
@@ -56,8 +107,11 @@ export function calculateRisk(segment, constructionZones = [], showConstruction 
     const shapTrafficJams = segment.trafficJams ? 0.7 : -0.2;
     const shapAccidents = segment.accidents ? 1.5 : 0.0;
 
+    // I. Citizen Reports
+    const citizenRisk = calcularRiesgoCiudadano(segment.id, citizenReports, bikeSegments);
+
     // Total risk score
-    let totalScore = baseValue + shapCrime + shapWeather + shapLightingTech + shapLightingPower + shapVisibility + shapGuardians + shapConstruction + shapTrafficJams + shapAccidents;
+    let totalScore = baseValue + shapCrime + shapWeather + shapLightingTech + shapLightingPower + shapVisibility + shapGuardians + shapConstruction + shapTrafficJams + shapAccidents + citizenRisk;
     totalScore = Math.max(0.5, Math.min(9.5, totalScore));
 
     let level = 'Bajo';
@@ -76,7 +130,8 @@ export function calculateRisk(segment, constructionZones = [], showConstruction 
             'Guardianes (CAI/Ruta)': shapGuardians,
             'Frente Obra (IDU)': shapConstruction,
             'Trancones (Waze)': shapTrafficJams,
-            'Accidentes (CRUE)': shapAccidents
+            'Accidentes (CRUE)': shapAccidents,
+            'Riesgo Ciudadano': citizenRisk
         }
     };
 }
@@ -102,7 +157,7 @@ export function findNearestSegment(latlng, bikeSegments) {
 }
 
 // Evaluate coordinate risk using current simulation state
-export function evaluateCoordinateRisk(lat, lng, bikeSegments, simulationState, constructionZones = [], showConstruction = true) {
+export function evaluateCoordinateRisk(lat, lng, bikeSegments, simulationState, constructionZones = [], showConstruction = true, citizenReports = []) {
     const nearest = findNearestSegment({ lat, lng }, bikeSegments);
     const baseValue = 5.0;
 
@@ -132,18 +187,21 @@ export function evaluateCoordinateRisk(lat, lng, bikeSegments, simulationState, 
     const shapTrafficJams = trafficJams ? 0.7 : -0.2;
     const shapAccidents = accidents ? 1.5 : 0.0;
 
-    let score = baseValue + shapCrime + shapWeather + shapLightingTech + shapLightingPower + shapVisibility + (shapCai + shapRuta) + shapConstruction + shapTrafficJams + shapAccidents;
+    // Citizen Reports
+    const citizenRisk = nearest ? calcularRiesgoCiudadano(nearest.id, citizenReports, bikeSegments) : 0;
+
+    let score = baseValue + shapCrime + shapWeather + shapLightingTech + shapLightingPower + shapVisibility + (shapCai + shapRuta) + shapConstruction + shapTrafficJams + shapAccidents + citizenRisk;
     score = Math.max(0.5, Math.min(9.5, score));
 
     let level = 'Bajo';
     if (score >= 7.0) level = 'Alto';
     else if (score >= 3.8) level = 'Medio';
 
-    return { score, level };
+    return { score: score.toFixed(1), level };
 }
 
 // Calculate the average risk and max risk levels across route coordinates
-export function calculateRouteAverageRisk(coords, bikeSegments, simulationState, constructionZones = [], showConstruction = true) {
+export function calculateRouteAverageRisk(coords, bikeSegments, simulationState, constructionZones = [], showConstruction = true, citizenReports = []) {
     let totalScore = 0;
     let maxScore = 0;
     const step = Math.max(1, Math.floor(coords.length / 20)); // Sample coordinates
@@ -151,7 +209,7 @@ export function calculateRouteAverageRisk(coords, bikeSegments, simulationState,
     
     for (let i = 0; i < coords.length; i += step) {
         const pt = coords[i];
-        const risk = evaluateCoordinateRisk(pt[0], pt[1], bikeSegments, simulationState, constructionZones, showConstruction);
+        const risk = evaluateCoordinateRisk(pt[0], pt[1], bikeSegments, simulationState, constructionZones, showConstruction, citizenReports);
         const scoreNum = parseFloat(risk.score);
         totalScore += scoreNum;
         if (scoreNum > maxScore) {
@@ -166,6 +224,34 @@ export function calculateRouteAverageRisk(coords, bikeSegments, simulationState,
     else if (maxScore >= 3.8) maxLevel = 'Medio';
     
     return { avgScore, maxLevel };
+}
+
+// Calculate the dynamic routing cost based on the formula: Costo_i = Distancia_i * (1 + Riesgo_Base_i + Riesgo_Ciudadano_i)
+export function calculateRouteCost(coords, bikeSegments, simulationState, constructionZones = [], showConstruction = true, citizenReports = []) {
+    if (!coords || coords.length < 2) return 0;
+    
+    let totalCost = 0;
+    for (let i = 0; i < coords.length - 1; i++) {
+        const pt1 = coords[i];
+        const pt2 = coords[i+1];
+        
+        // Approximate distance in km
+        const distDeg = Math.sqrt(Math.pow(pt1[0] - pt2[0], 2) + Math.pow(pt1[1] - pt2[1], 2));
+        const distKm = distDeg * 111.0;
+        
+        // Midpoint coordinates to evaluate risk
+        const midLat = (pt1[0] + pt2[0]) / 2;
+        const midLng = (pt1[1] + pt2[1]) / 2;
+        
+        // Evaluate risk at midpoint
+        const risk = evaluateCoordinateRisk(midLat, midLng, bikeSegments, simulationState, constructionZones, showConstruction, citizenReports);
+        const riskScore = parseFloat(risk.score);
+        
+        // Costo_i = Distancia_i * (1 + Riesgo_i)
+        // Note: Puntaje_Riesgo_Base_i + Puntaje_Riesgo_Ciudadano_i is exactly equal to the total risk score computed.
+        totalCost += distKm * (1 + riskScore);
+    }
+    return totalCost;
 }
 
 // Generate CPTED & Infrastructure recommendations dynamically
@@ -335,4 +421,53 @@ export function getRouteRecommendations(route, simulationState, generatedRoutes,
     }
 
     return recs;
+}
+
+// Detect traffic jams that overlap with a route's coordinates
+export function detectTrafficJamsOnRoute(routeCoords, trafficJams, thresholdMeters = 100) {
+    if (!routeCoords || routeCoords.length === 0 || !trafficJams || trafficJams.length === 0) {
+        return [];
+    }
+
+    const detected = [];
+
+    trafficJams.forEach(jam => {
+        const affectedIndices = new Set();
+        let isOnRoute = false;
+
+        // For each segment of the jam polyline, check against route points
+        for (let j = 0; j < jam.coordinates.length; j++) {
+            const jamPt = jam.coordinates[j];
+
+            for (let r = 0; r < routeCoords.length; r++) {
+                const routePt = routeCoords[r];
+                // Approximate distance in meters (1 degree ≈ 111,000 meters)
+                const distDeg = Math.sqrt(
+                    Math.pow(routePt[0] - jamPt[0], 2) + Math.pow(routePt[1] - jamPt[1], 2)
+                );
+                const distMeters = distDeg * 111000;
+
+                if (distMeters <= thresholdMeters) {
+                    isOnRoute = true;
+                    affectedIndices.add(r);
+                }
+            }
+        }
+
+        if (isOnRoute) {
+            const indices = Array.from(affectedIndices).sort((a, b) => a - b);
+            detected.push({
+                jam: jam,
+                affectedSegments: indices,
+                startIndex: indices[0],
+                endIndex: indices[indices.length - 1],
+                delayMinutes: jam.delayMinutes,
+                fromName: jam.fromName,
+                toName: jam.toName,
+                severity: jam.severity
+            });
+        }
+    });
+
+    return detected;
 }

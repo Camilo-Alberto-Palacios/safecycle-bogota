@@ -9,13 +9,18 @@ import DashboardLayout from '../templates/DashboardLayout';
 
 import { bikeSegments as initialSegments, localitiesMap } from '../../data/bikeSegments';
 import { constructionZones } from '../../data/constructionZones';
+import { trafficJams } from '../../data/trafficJams';
 import { 
     calculateRisk, 
     getRecommendations, 
     getRouteRecommendations, 
     findNearestSegment,
-    calculateRouteAverageRisk
+    calculateRouteAverageRisk,
+    detectTrafficJamsOnRoute,
+    calculateRouteCost,
+    calcularRiesgoCiudadano
 } from '../../utils/riskCalculator';
+import CitizenSciencePanel from '../organisms/CitizenSciencePanel';
 
 export default function MainDashboard() {
     // 1. Localities and View Modes
@@ -45,8 +50,18 @@ export default function MainDashboard() {
         cais: true,
         construction: true,
         accidents: true,
-        robberies: true
+        robberies: true,
+        trafficJams: true,
+        citizenReports: true
     });
+
+    // 3b. Citizen Science and Reports State
+    const [citizenReports, setCitizenReports] = useState([]);
+    const [isReporting, setIsReporting] = useState(false);
+    const [reportingType, setReportingType] = useState('Luminaria Dañada / Boca de lobo');
+    const [reportingCoords, setReportingCoords] = useState(null);
+    const [isSelectingCoords, setIsSelectingCoords] = useState(false);
+    const [zoomToCoords, setZoomToCoords] = useState(null);
 
     // 4. Route Planning State
     const [originInput, setOriginInput] = useState('Portal Usme');
@@ -164,6 +179,12 @@ export default function MainDashboard() {
         
         setSelectingLocationMode(null);
 
+        if (activeMode === 'report') {
+            setReportingCoords([latlng.lat, latlng.lng]);
+            setIsSelectingCoords(false);
+            return;
+        }
+
         setRoutePoints(prev => ({
             ...prev,
             [activeMode]: { lat: latlng.lat, lng: latlng.lng }
@@ -197,6 +218,137 @@ export default function MainDashboard() {
             setDestInput(name);
         }
     };
+
+    // 10c. Citizen Science Report Handlers
+    const handleSetSelectingCoords = (val) => {
+        setIsSelectingCoords(val);
+        if (val) {
+            setSelectingLocationMode('report');
+        } else {
+            if (selectingLocationMode === 'report') {
+                setSelectingLocationMode(null);
+            }
+        }
+    };
+
+    const handleSubmitReport = () => {
+        if (!reportingCoords) return;
+
+        let updated = false;
+        const updatedReports = citizenReports.map(report => {
+            if (report.properties.estado === 'activo' && report.properties.tipo_novedad === reportingType) {
+                const reportCoords = report.properties.coordenadas;
+                const distDeg = Math.sqrt(Math.pow(reportCoords[0] - reportingCoords[0], 2) + Math.pow(reportCoords[1] - reportingCoords[1], 2));
+                const distMeters = distDeg * 111000;
+                
+                if (distMeters <= 50) {
+                    updated = true;
+                    return {
+                        ...report,
+                        properties: {
+                            ...report.properties,
+                            numero_votos: report.properties.numero_votos + 1
+                        }
+                    };
+                }
+            }
+            return report;
+        });
+
+        if (updated) {
+            setCitizenReports(updatedReports);
+            alert("Se detectó un reporte idéntico a menos de 50 metros. Se ha sumado tu respaldo (voto) al reporte existente en lugar de duplicarlo.");
+        } else {
+            const newReport = {
+                type: "Feature",
+                id: `report_${Date.now()}`,
+                geometry: {
+                    type: "Point",
+                    coordinates: [reportingCoords[1], reportingCoords[0]]
+                },
+                properties: {
+                    id: `report_${Date.now()}`,
+                    coordenadas: [reportingCoords[0], reportingCoords[1]],
+                    tipo_novedad: reportingType,
+                    fecha_creacion: new Date().toISOString().split('T')[0],
+                    numero_votos: 1,
+                    estado: 'activo',
+                    localidad: localidad === 'usme' ? 'Usme' : 'Rafael Uribe Uribe'
+                }
+            };
+            setCitizenReports(prev => [...prev, newReport]);
+            alert("Reporte creado con éxito.");
+        }
+
+        setIsReporting(false);
+        setReportingCoords(null);
+        setIsSelectingCoords(false);
+    };
+
+    const handleCancelReport = () => {
+        setIsReporting(false);
+        setReportingCoords(null);
+        setIsSelectingCoords(false);
+        if (selectingLocationMode === 'report') {
+            setSelectingLocationMode(null);
+        }
+    };
+
+    const handleZoomToReport = (coords) => {
+        setZoomToCoords(coords);
+        setTimeout(() => {
+            setZoomToCoords(null);
+        }, 1000);
+    };
+
+    const handleUpvoteReport = (reportId) => {
+        setCitizenReports(prev => {
+            return prev.map(report => {
+                if (report.properties.id === reportId) {
+                    return {
+                        ...report,
+                        properties: {
+                            ...report.properties,
+                            numero_votos: report.properties.numero_votos + 1
+                        }
+                    };
+                }
+                return report;
+            });
+        });
+    };
+
+    // Recalculate routes risk & cost in-place when citizen reports are updated (adds immediate responsiveness)
+    useEffect(() => {
+        if (generatedRoutes.length > 0) {
+            setGeneratedRoutes(prevRoutes => {
+                return prevRoutes.map(route => {
+                    const riskDetails = calculateRouteAverageRisk(
+                        route.coordinates,
+                        segments,
+                        simulationState,
+                        constructionZones,
+                        simulationState.showConstruction,
+                        citizenReports
+                    );
+                    const routeCost = calculateRouteCost(
+                        route.coordinates,
+                        segments,
+                        simulationState,
+                        constructionZones,
+                        simulationState.showConstruction,
+                        citizenReports
+                    );
+                    return {
+                        ...route,
+                        avgRiskScore: riskDetails.avgScore,
+                        maxRiskLevel: riskDetails.maxLevel,
+                        cost: routeCost.toFixed(1)
+                    };
+                });
+            });
+        }
+    }, [citizenReports]);
 
     // 11. Nominatim Geocoding Fetcher
     const geocodeAddress = async (addressText) => {
@@ -296,17 +448,35 @@ export default function MainDashboard() {
                 segments, 
                 simulationState, 
                 constructionZones, 
-                simulationState.showConstruction
+                simulationState.showConstruction,
+                citizenReports
             );
+            const routeCost = calculateRouteCost(
+                leafletCoords,
+                segments,
+                simulationState,
+                constructionZones,
+                simulationState.showConstruction,
+                citizenReports
+            );
+
+            // Detect traffic jams on this route
+            const jamsOnRoute = detectTrafficJamsOnRoute(leafletCoords, trafficJams);
+            const totalDelayMinutes = jamsOnRoute.reduce((sum, j) => sum + j.delayMinutes, 0);
+            const baseDurationMin = Math.round(route.duration / 60);
             
             return {
                 id: `route_${idx}`,
                 name: `Ruta ${idx + 1}`,
                 distanceKm: (route.distance / 1000).toFixed(1),
-                durationMin: (route.duration / 60).toFixed(0),
+                durationMin: String(baseDurationMin),
+                durationWithTraffic: String(baseDurationMin + totalDelayMinutes),
                 coordinates: leafletCoords,
                 avgRiskScore: riskDetails.avgScore,
-                maxRiskLevel: riskDetails.maxLevel
+                maxRiskLevel: riskDetails.maxLevel,
+                trafficJamsOnRoute: jamsOnRoute,
+                totalDelayMinutes: totalDelayMinutes,
+                cost: routeCost.toFixed(1)
             };
         });
 
@@ -348,6 +518,19 @@ export default function MainDashboard() {
             }
         }
 
+        let routeCitizenImpact = 0;
+        const step = Math.max(1, Math.floor(activeRoute.coordinates.length / 20));
+        let count = 0;
+        for (let i = 0; i < activeRoute.coordinates.length; i += step) {
+            const pt = activeRoute.coordinates[i];
+            const nearest = findNearestSegment({ lat: pt[0], lng: pt[1] }, segments);
+            if (nearest) {
+                routeCitizenImpact += calcularRiesgoCiudadano(nearest.id, citizenReports, segments);
+            }
+            count++;
+        }
+        routeCitizenImpact = parseFloat((routeCitizenImpact / count).toFixed(2));
+
         currentPrediction = {
             score: activeRoute.avgRiskScore,
             level: riskLevel,
@@ -359,14 +542,15 @@ export default function MainDashboard() {
                 'Guardianes CAI/Ruta': (simulationState.guardianCai ? -1.3 : 0.0) + (simulationState.guardianRuta ? -0.9 : 0.0),
                 'Frente Obra (IDU)': routeConstructionImpact,
                 'Trancones (Waze)': simulationState.trafficJams ? 0.7 : -0.2,
-                'Accidentes (CRUE)': simulationState.accidents ? 1.5 : 0.0
+                'Accidentes (CRUE)': simulationState.accidents ? 1.5 : 0.0,
+                'Riesgo Ciudadano': routeCitizenImpact
             }
         };
         recommendations = getRouteRecommendations(activeRoute, simulationState, generatedRoutes, constructionZones, simulationState.showConstruction);
     } else if (selectedSegmentId && segments[selectedSegmentId]) {
         // Evaluate segment risk
         const segment = segments[selectedSegmentId];
-        currentPrediction = calculateRisk(segment, constructionZones, simulationState.showConstruction);
+        currentPrediction = calculateRisk(segment, constructionZones, simulationState.showConstruction, citizenReports, segments);
         recommendations = getRecommendations(segment, currentPrediction, simulationState);
     }
 
@@ -399,6 +583,10 @@ export default function MainDashboard() {
                     constructionZones={constructionZones}
                     showConstruction={simulationState.showConstruction}
                     mapLayers={mapLayers}
+                    trafficJams={trafficJams}
+                    citizenReports={citizenReports}
+                    onUpvoteReport={handleUpvoteReport}
+                    zoomToCoords={zoomToCoords}
                 />
             }
             routePlanner={
@@ -436,11 +624,29 @@ export default function MainDashboard() {
                     onSelectRoute={setActiveRouteId}
                     recommendations={recommendations}
                     viewMode={viewMode}
+                    trafficJamsOnRoute={activeRoute ? activeRoute.trafficJamsOnRoute : []}
+                    totalDelayMinutes={activeRoute ? activeRoute.totalDelayMinutes : 0}
                 />
             }
             statsPanel={
                 <StatsPanel
                     shaps={currentPrediction.shaps}
+                />
+            }
+            citizenSciencePanel={
+                <CitizenSciencePanel
+                    citizenReports={citizenReports}
+                    localidad={localidad}
+                    isReporting={isReporting}
+                    setIsReporting={setIsReporting}
+                    reportingType={reportingType}
+                    setReportingType={setReportingType}
+                    reportingCoords={reportingCoords}
+                    isSelectingCoords={isSelectingCoords}
+                    setIsSelectingCoords={handleSetSelectingCoords}
+                    onSubmitReport={handleSubmitReport}
+                    onCancelReport={handleCancelReport}
+                    onZoomToReport={handleZoomToReport}
                 />
             }
         />
