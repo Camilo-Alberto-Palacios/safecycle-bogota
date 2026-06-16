@@ -967,7 +967,7 @@ input:checked + .slider-round:before {
     border: 1px solid var(--border-color);
     border-radius: var(--radius-md);
     padding: 0.5rem;
-    height: 170px;
+    height: 220px;
     position: relative;
 }
 
@@ -1452,5 +1452,59 @@ input:checked + .slider-round:before {
         bottom: 1rem;
         left: 1rem;
         padding: 0.5rem 0.75rem;
+    }
+}
+
+/* Custom styles for CAI & Construction Layers */
+.map-layers-toggle {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+}
+
+.layer-checkbox-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    cursor: pointer;
+    user-select: none;
+    transition: var(--transition-smooth);
+}
+
+.layer-checkbox-item:hover {
+    color: var(--text-primary);
+}
+
+.layer-checkbox-item input {
+    margin: 0;
+    accent-color: var(--accent-color);
+    cursor: pointer;
+}
+
+/* Marker hover and animations */
+.cai-marker, .construction-marker div, .robbery-marker, .accident-marker {
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.cai-marker-wrapper:hover .cai-marker,
+.construction-marker:hover div,
+.robbery-marker-wrapper:hover .robbery-marker,
+.accident-marker-wrapper:hover .accident-marker {
+    transform: scale(1.15);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.6) !important;
+}
+
+/* Pulse glow animations */
+@keyframes pulseGlow {
+    0% {
+        box-shadow: 0 0 4px rgba(249, 115, 22, 0.4);
+        transform: scale(0.98);
+    }
+    100% {
+        box-shadow: 0 0 12px rgba(249, 115, 22, 0.85), 0 0 4px rgba(249, 115, 22, 0.4);
+        transform: scale(1.05);
     }
 }

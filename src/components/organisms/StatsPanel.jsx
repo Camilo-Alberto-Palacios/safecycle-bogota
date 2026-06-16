@@ -68,8 +68,9 @@ export default function StatsPanel({ shaps }) {
                                 display: false
                             },
                             ticks: {
+                                autoSkip: false,
                                 font: {
-                                    size: 11,
+                                    size: 10,
                                     weight: '600'
                                 },
                                 color: '#f8fafc'

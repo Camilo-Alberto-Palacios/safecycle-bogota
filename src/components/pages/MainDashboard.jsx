@@ -34,7 +34,18 @@ export default function MainDashboard() {
         visibility: 2,
         guardianCai: false,
         guardianRuta: false,
-        showConstruction: true
+        showConstruction: true,
+        trafficJams: false,
+        accidents: false
+    });
+
+    // Map Layers Visibility State
+    const [mapLayers, setMapLayers] = useState({
+        localities: true,
+        cais: true,
+        construction: true,
+        accidents: true,
+        robberies: true
     });
 
     // 4. Route Planning State
@@ -73,7 +84,10 @@ export default function MainDashboard() {
                 watts: segment.watts || 100,
                 visibility: segment.visibility || 2,
                 guardianCai: segment.guardianCai || false,
-                guardianRuta: segment.guardianRuta || false
+                guardianRuta: segment.guardianRuta || false,
+                showConstruction: segment.showConstruction !== false,
+                trafficJams: segment.trafficJams || false,
+                accidents: segment.accidents || false
             });
         }
     };
@@ -136,7 +150,10 @@ export default function MainDashboard() {
             watts: 100,
             visibility: 2,
             guardianCai: false,
-            guardianRuta: false
+            guardianRuta: false,
+            showConstruction: true,
+            trafficJams: false,
+            accidents: false
         });
     };
 
@@ -340,7 +357,9 @@ export default function MainDashboard() {
                 'Clima IDIGER': simulationState.weather === 'lluvia' ? 1.4 : -0.3,
                 'Visibilidad CPTED': simulationState.visibility === 1 ? 0.9 : (simulationState.visibility === 3 ? -1.0 : 0.0),
                 'Guardianes CAI/Ruta': (simulationState.guardianCai ? -1.3 : 0.0) + (simulationState.guardianRuta ? -0.9 : 0.0),
-                'Frente Obra (IDU)': routeConstructionImpact
+                'Frente Obra (IDU)': routeConstructionImpact,
+                'Trancones (Waze)': simulationState.trafficJams ? 0.7 : -0.2,
+                'Accidentes (CRUE)': simulationState.accidents ? 1.5 : 0.0
             }
         };
         recommendations = getRouteRecommendations(activeRoute, simulationState, generatedRoutes, constructionZones, simulationState.showConstruction);
@@ -379,6 +398,7 @@ export default function MainDashboard() {
                     bikeSegments={segments}
                     constructionZones={constructionZones}
                     showConstruction={simulationState.showConstruction}
+                    mapLayers={mapLayers}
                 />
             }
             routePlanner={
@@ -395,6 +415,8 @@ export default function MainDashboard() {
                     isLoading={isLoading}
                     onSelectOriginLocation={handleSelectOriginLocation}
                     onSelectDestLocation={handleSelectDestLocation}
+                    mapLayers={mapLayers}
+                    onMapLayersChange={setMapLayers}
                 />
             }
             simulatorPanel={

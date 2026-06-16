@@ -6,7 +6,7 @@ export const constructionZones = [
         description: 'Construcción de carriles exclusivos de TransMilenio. Presencia de polisombras altas que limitan la visibilidad de los ciclistas y acumulación de escombros en andenes.',
         lat: 4.5317,
         lng: -74.1080,
-        radius: 200, // en metros
+        radius: 200,
         riskWeight: 1.8,
         localidad: 'usme',
         endDate: 'Diciembre 2026'
@@ -18,7 +18,7 @@ export const constructionZones = [
         description: 'Rehabilitación de calzada. Excavaciones profundas descubiertas, desvíos provisionales por ciclorrutas alternas sin iluminación adecuada.',
         lat: 4.5050,
         lng: -74.1210,
-        radius: 150, // en metros
+        radius: 150,
         riskWeight: 1.5,
         localidad: 'usme',
         endDate: 'Octubre 2026'
@@ -30,7 +30,7 @@ export const constructionZones = [
         description: 'Traslado de redes y cimentaciones del viaducto. Pasillos peatonales angostos delimitados por láminas metálicas ciegas (efecto túnel), nula visibilidad hacia los comercios.',
         lat: 4.5820,
         lng: -74.1210,
-        radius: 250, // en metros
+        radius: 250,
         riskWeight: 2.2,
         localidad: 'ruu',
         endDate: 'Marzo 2027'
@@ -42,9 +42,225 @@ export const constructionZones = [
         description: 'Reemplazo de tubería matriz. Cierre total de andenes, paso obligado de ciclistas por el carril vehicular mixto en zona de penumbra nocturna.',
         lat: 4.5700,
         lng: -74.1140,
-        radius: 160, // en metros
+        radius: 160,
         riskWeight: 1.6,
         localidad: 'ruu',
         endDate: 'Noviembre 2026'
+    },
+    {
+        id: 'const_novena_c100',
+        name: 'Ampliación Av. Novena / Calle 100',
+        contratista: 'Consorcio Obras del Norte',
+        description: 'Construcción de puente vehicular y adecuaciones para alimentadores del Metro. Desvíos y escombros en ciclorruta.',
+        lat: 4.6860,
+        lng: -74.0420,
+        radius: 200,
+        riskWeight: 1.5,
+        localidad: 'usaquen',
+        endDate: 'Enero 2027'
+    },
+    {
+        id: 'const_cr7_retiro',
+        name: 'Corredor Verde Carrera 7 - Sector El Retiro',
+        contratista: 'Consorcio Revitalización Carrera 7',
+        description: 'Adecuación urbanística y ciclorruta segregada. Reducción de calzada y desvíos provisionales peatón-bici.',
+        lat: 4.6650,
+        lng: -74.0550,
+        radius: 180,
+        riskWeight: 1.6,
+        localidad: 'chapinero',
+        endDate: 'Noviembre 2026'
+    },
+    {
+        id: 'const_caracas_centro',
+        name: 'Adecuación Troncal Caracas Centro',
+        contratista: 'Metro Línea 1 S.A.S.',
+        description: 'Cierres totales de calzadas para cimentación de viaducto. Altísimo riesgo por flujo de buses y desvíos angostos.',
+        lat: 4.6030,
+        lng: -74.0720,
+        radius: 220,
+        riskWeight: 2.0,
+        localidad: 'santafe',
+        endDate: 'Julio 2027'
+    },
+    {
+        id: 'const_cable_sancristobal',
+        name: 'Construcción Cable Aéreo San Cristóbal',
+        contratista: 'Doppelmayr Colombia S.A.S.',
+        description: 'Cimentación de pilonas en el Portal del 20 de Julio y zonas aledañas. Cierre de andenes y pasos seguros.',
+        lat: 4.5620,
+        lng: -74.0850,
+        radius: 250,
+        riskWeight: 1.8,
+        localidad: 'sancristobal',
+        endDate: 'Septiembre 2027'
+    },
+    {
+        id: 'const_av68_sur',
+        name: 'Construcción Puente Av. 68 con Autopista Sur',
+        contratista: 'Consorcio Vial Autopista Sur',
+        description: 'Demolición e izado de vigas del nuevo puente de la Av. 68. Maquinaria pesada operando y pasos peatonales provisionales.',
+        lat: 4.5910,
+        lng: -74.1350,
+        radius: 220,
+        riskWeight: 1.9,
+        localidad: 'tunjuelito',
+        endDate: 'Febrero 2027'
+    },
+    {
+        id: 'const_metro_patio',
+        name: 'Patio Taller Metro L1 - Bosa El Gamo',
+        contratista: 'Consorcio Constructor Metro Bogotá',
+        description: 'Nivelación y construcción del taller principal de trenes. Alto flujo de volquetas y escombros en accesos viales.',
+        lat: 4.6350,
+        lng: -74.1950,
+        radius: 300,
+        riskWeight: 2.1,
+        localidad: 'bosa',
+        endDate: 'Junio 2028'
+    },
+    {
+        id: 'const_cali_feed',
+        name: 'Adecuación Av. Ciudad de Cali (Alimentadora Metro)',
+        contratista: 'Consorcio Cali Bosa S.A.S.',
+        description: 'Carriles exclusivos de TransMilenio y ciclorruta renovada. Excavación vial y cierre de andenes existentes.',
+        lat: 4.6180,
+        lng: -74.1650,
+        radius: 250,
+        riskWeight: 1.7,
+        localidad: 'kennedy',
+        endDate: 'Agosto 2026'
+    },
+    {
+        id: 'const_c13_centenario',
+        name: 'Ampliación Av. Centenario (Calle 13)',
+        contratista: 'Vías Sabana S.A.S.',
+        description: 'Ampliación de carriles mixtos y ciclorruta nueva. Zanjas descubiertas y pasos alternos provisionales sin luces.',
+        lat: 4.6750,
+        lng: -74.1380,
+        radius: 200,
+        riskWeight: 1.6,
+        localidad: 'fontibon',
+        endDate: 'Mayo 2027'
+    },
+    {
+        id: 'const_mutis_c63',
+        name: 'Obras Av. Mutis (Calle 63)',
+        contratista: 'Consorcio Mutis 2026',
+        description: 'Construcción de calzadas para conexión occidental. Escombros acumulados en ciclorruta y falta de iluminación.',
+        lat: 4.6950,
+        lng: -74.1100,
+        radius: 180,
+        riskWeight: 1.5,
+        localidad: 'engativa',
+        endDate: 'Diciembre 2026'
+    },
+    {
+        id: 'const_rincon_boyaca',
+        name: 'Obras Av. El Rincón con Av. Boyacá',
+        contratista: 'Consorcio El Rincón',
+        description: 'Intercambiador vial y puente de conexión. Cierre de andenes y ciclorrutas bajo el puente con polisombra espesa.',
+        lat: 4.7180,
+        lng: -74.0950,
+        radius: 250,
+        riskWeight: 2.0,
+        localidad: 'suba',
+        endDate: 'Marzo 2027'
+    },
+    {
+        id: 'const_heroes_tm',
+        name: 'Ampliación Estación TransMilenio Héroes',
+        contratista: 'Obras Civiles del Norte',
+        description: 'Desmonte y reconstrucción de pasarela peatonal. Paso provisional estrecho con alto flujo de usuarios.',
+        lat: 4.6610,
+        lng: -74.0630,
+        radius: 220,
+        riskWeight: 2.2,
+        localidad: 'barriosunidos',
+        endDate: 'Diciembre 2026'
+    },
+    {
+        id: 'const_av68_c26',
+        name: 'Construcción Troncal Av. 68 - Sector Calle 26',
+        contratista: 'Consorcio Avenida 68',
+        description: 'Adecuación de calzadas y redes de servicios. Polisombras laterales que reducen la visual y andenes reducidos.',
+        lat: 4.6420,
+        lng: -74.0980,
+        radius: 200,
+        riskWeight: 1.8,
+        localidad: 'teusaquillo',
+        endDate: 'Octubre 2026'
+    },
+    {
+        id: 'const_bronx_creativo',
+        name: 'Revitalización Bronx Distrito Creativo',
+        contratista: 'Consorcio Bronx Centro',
+        description: 'Restauración del edificio de la Flauta e infraestructura cultural. Cierres perimetrales con polisombra y acumulación de materiales.',
+        lat: 4.6020,
+        lng: -74.0840,
+        radius: 150,
+        riskWeight: 1.4,
+        localidad: 'losmartires',
+        endDate: 'Enero 2027'
+    },
+    {
+        id: 'const_metro_intercambiador',
+        name: 'Obras Metro L1 - Intercambiador Vial Calle 1ra con Caracas',
+        contratista: 'Metro Línea 1 S.A.S.',
+        description: 'Construcción del viaducto y giros vehiculares elevados. Tráfico pesado y desvíos angostos para bicicletas.',
+        lat: 4.5880,
+        lng: -74.0950,
+        radius: 200,
+        riskWeight: 2.0,
+        localidad: 'antonionarino',
+        endDate: 'Noviembre 2027'
+    },
+    {
+        id: 'const_av68_c13',
+        name: 'Obras Av. 68 con Calle 13',
+        contratista: 'Consorcio Infraestructura Bogotá',
+        description: 'Construcción de carriles de TransMilenio y adecuaciones del espacio público. Ruido extremo y zanjas no señalizadas.',
+        lat: 4.6250,
+        lng: -74.1140,
+        radius: 220,
+        riskWeight: 1.9,
+        localidad: 'puentearanda',
+        endDate: 'Abril 2027'
+    },
+    {
+        id: 'const_eje_ambiental',
+        name: 'Peatonalización Eje Ambiental Calle 19',
+        contratista: 'Consorcio Candelaria Histórica',
+        description: 'Reemplazo de adoquines y mantenimiento de jardineras. Cierre parcial de calzada peatonal y paso de ciclistas compartido.',
+        lat: 4.6010,
+        lng: -74.0700,
+        radius: 120,
+        riskWeight: 1.3,
+        localidad: 'lacandelaria',
+        endDate: 'Septiembre 2026'
+    },
+    {
+        id: 'const_cable_paraiso',
+        name: 'Estación de Retorno TransMiCable El Paraíso',
+        contratista: 'Vías y Cables del Sur',
+        description: 'Mantenimiento preventivo en plataformas de abordaje. Accesos peatonales provisionales por escaleras angostas.',
+        lat: 4.4980,
+        lng: -74.1620,
+        radius: 200,
+        riskWeight: 1.5,
+        localidad: 'ciudadbolivar',
+        endDate: 'Julio 2027'
+    },
+    {
+        id: 'const_via_sumapaz',
+        name: 'Mejoramiento Corredor Vial Sumapaz',
+        contratista: 'Consorcio Vías del Sumapaz',
+        description: 'Estabilización de taludes y pavimentación de puntos críticos. Pérdida de banca y paso regulado por un solo carril.',
+        lat: 4.0220,
+        lng: -74.2250,
+        radius: 350,
+        riskWeight: 1.6,
+        localidad: 'sumapaz',
+        endDate: 'Marzo 2027'
     }
 ];

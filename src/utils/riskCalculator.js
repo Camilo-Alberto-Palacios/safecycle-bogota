@@ -52,8 +52,12 @@ export function calculateRisk(segment, constructionZones = [], showConstruction 
     const startCoord = segment.coordinates[0];
     const shapConstruction = getConstructionRiskImpact(startCoord[0], startCoord[1], constructionZones, showConstruction);
 
+    // H. Trancones (Waze) & Accidentes (CRUE) en Tiempo Real
+    const shapTrafficJams = segment.trafficJams ? 0.7 : -0.2;
+    const shapAccidents = segment.accidents ? 1.5 : 0.0;
+
     // Total risk score
-    let totalScore = baseValue + shapCrime + shapWeather + shapLightingTech + shapLightingPower + shapVisibility + shapGuardians + shapConstruction;
+    let totalScore = baseValue + shapCrime + shapWeather + shapLightingTech + shapLightingPower + shapVisibility + shapGuardians + shapConstruction + shapTrafficJams + shapAccidents;
     totalScore = Math.max(0.5, Math.min(9.5, totalScore));
 
     let level = 'Bajo';
@@ -70,7 +74,9 @@ export function calculateRisk(segment, constructionZones = [], showConstruction 
             'Potencia (UAESP)': shapLightingPower,
             'Visibilidad (CPTED)': shapVisibility,
             'Guardianes (CAI/Ruta)': shapGuardians,
-            'Frente Obra (IDU)': shapConstruction
+            'Frente Obra (IDU)': shapConstruction,
+            'Trancones (Waze)': shapTrafficJams,
+            'Accidentes (CRUE)': shapAccidents
         }
     };
 }
@@ -106,7 +112,7 @@ export function evaluateCoordinateRisk(lat, lng, bikeSegments, simulationState, 
     else if (baseline === 'Medio') shapCrime = 0.2;
     else if (baseline === 'Bajo') shapCrime = -2.1;
 
-    const { weather, lightingType, watts, visibility, guardianCai, guardianRuta } = simulationState;
+    const { weather, lightingType, watts, visibility, guardianCai, guardianRuta, trafficJams, accidents } = simulationState;
 
     const shapWeather = (weather === 'lluvia') ? 1.4 : -0.3;
     const shapLightingTech = (lightingType === 'Sodio') ? 0.7 : -0.8;
@@ -122,7 +128,11 @@ export function evaluateCoordinateRisk(lat, lng, bikeSegments, simulationState, 
     // Frente de Obra (IDU)
     const shapConstruction = getConstructionRiskImpact(lat, lng, constructionZones, showConstruction);
 
-    let score = baseValue + shapCrime + shapWeather + shapLightingTech + shapLightingPower + shapVisibility + (shapCai + shapRuta) + shapConstruction;
+    // Trancones (Waze) & Accidentes (CRUE) en Tiempo Real
+    const shapTrafficJams = trafficJams ? 0.7 : -0.2;
+    const shapAccidents = accidents ? 1.5 : 0.0;
+
+    let score = baseValue + shapCrime + shapWeather + shapLightingTech + shapLightingPower + shapVisibility + (shapCai + shapRuta) + shapConstruction + shapTrafficJams + shapAccidents;
     score = Math.max(0.5, Math.min(9.5, score));
 
     let level = 'Bajo';
@@ -217,10 +227,26 @@ export function getRecommendations(segment, prediction, simulationState) {
     }
 
     // Default good feedback if segment has low risk
-    if (prediction.level === 'Bajo' && (!prediction.shaps || prediction.shaps['Frente Obra (IDU)'] === 0)) {
+    if (prediction.level === 'Bajo' && (!prediction.shaps || prediction.shaps['Frente Obra (IDU)'] === 0) && !simulationState.trafficJams && !simulationState.accidents) {
         recs.push({
             text: '<strong>Entorno Seguro:</strong> El diseño físico actual (luminarias eficientes y visibilidad óptima) cumple con las directrices internacionales CPTED.',
             warning: false
+        });
+    }
+
+    // 7. Trancones en Tiempo Real
+    if (simulationState.trafficJams) {
+        recs.push({
+            text: '<strong>Congestión Vial (Trancones):</strong> El tráfico vehicular lento o detenido puede propiciar hurtos rápidos de oportunidad en ciclorrutas paralelas y la invasión de ciclistas/motos. Mantente alerta.',
+            warning: true
+        });
+    }
+
+    // 8. Accidentes en Tiempo Real
+    if (simulationState.accidents) {
+        recs.push({
+            text: '<strong>Siniestro Vial Reciente:</strong> Se reporta un accidente en la calzada. Modera la velocidad, anticípate a obstrucciones y evita desvíos arriesgados.',
+            warning: true
         });
     }
 
@@ -276,6 +302,20 @@ export function getRouteRecommendations(route, simulationState, generatedRoutes,
     if (hasConstructionOnRoute) {
         recs.push({
             text: '<strong>Frentes de Obra Activos (IDU):</strong> Esta ruta atraviesa zonas de obra con desvíos y barreras físicas. Extrema precauciones por presencia de maquinaria y polisombras.',
+            warning: true
+        });
+    }
+
+    if (simulationState.trafficJams) {
+        recs.push({
+            text: '<strong>Tránsito Crítico en Ruta:</strong> Alta congestión reportada en la vía. Mantente en la ciclorruta y ten cuidado con motos que puedan invadir el espacio.',
+            warning: true
+        });
+    }
+
+    if (simulationState.accidents) {
+        recs.push({
+            text: '<strong>Siniestro en Trayecto:</strong> Reporte de accidente activo en el trazado de la ruta. Circula con extrema precaución.',
             warning: true
         });
     }

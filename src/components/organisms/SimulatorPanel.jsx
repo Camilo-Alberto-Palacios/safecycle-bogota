@@ -183,6 +183,40 @@ export default function SimulatorPanel({
                         </div>
                     </div>
                 </div>
+
+                {/* Reportes en Tiempo Real (Waze / Movilidad) */}
+                <div className="control-group">
+                    <label className="control-label">
+                        <span>
+                            <i className="fa-solid fa-triangle-exclamation text-orange" style={{ color: '#f97316' }}></i> Reportes en Tiempo Real
+                            {isTech && <span className="tech-only"> (Waze / Movilidad)</span>}
+                        </span>
+                    </label>
+                    <div className="toggle-card">
+                        <div className="toggle-item">
+                            <div className="toggle-text">
+                                <span className="toggle-title">Tránsito / Trancones</span>
+                                <span className="toggle-desc">Congestión vehicular alta en la vía</span>
+                            </div>
+                            <Switch
+                                id="check-traffic-jams"
+                                checked={simulationState.trafficJams || false}
+                                onChange={(val) => onSimulationStateChange('trafficJams', val)}
+                            />
+                        </div>
+                        <div className="toggle-item">
+                            <div className="toggle-text">
+                                <span className="toggle-title">Accidentes Recientes</span>
+                                <span className="toggle-desc">Reporte activo de colisión o siniestro</span>
+                            </div>
+                            <Switch
+                                id="check-accidents"
+                                checked={simulationState.accidents || false}
+                                onChange={(val) => onSimulationStateChange('accidents', val)}
+                            />
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     );

@@ -1,7 +1,10 @@
 import React, { useEffect, useRef } from 'react';
 import L from 'leaflet';
 import { localitiesMap } from '../../data/bikeSegments';
-import { evaluateCoordinateRisk } from '../../utils/riskCalculator';
+import { caiPoints } from '../../data/caiPoints';
+import { robberyReports } from '../../data/robberyReports';
+import { accidentPoints } from '../../data/accidentPoints';
+import { calculateRisk, evaluateCoordinateRisk } from '../../utils/riskCalculator';
 
 // Helper to check if a point is inside a polygon (Ray-Casting Algorithm)
 function isPointInPolygon(point, polygonCoords) {
@@ -24,6 +27,34 @@ function getRiskColor(level) {
     return '#10b981';
 }
 
+// Get local key for a LocNombre from GeoJSON
+function getLocalityKey(locNombre) {
+    if (!locNombre) return null;
+    // Normalize to uppercase and strip out Spanish accents/diacritics for robust matching
+    const name = locNombre.toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    if (name.includes('USAQUEN')) return 'usaquen';
+    if (name.includes('CHAPINERO')) return 'chapinero';
+    if (name.includes('SANTA FE') || name.includes('SANTAFE')) return 'santafe';
+    if (name.includes('SAN CRISTOBAL')) return 'sancristobal';
+    if (name.includes('USME')) return 'usme';
+    if (name.includes('TUNJUELITO')) return 'tunjuelito';
+    if (name.includes('BOSA')) return 'bosa';
+    if (name.includes('KENNEDY')) return 'kennedy';
+    if (name.includes('FONTIBON')) return 'fontibon';
+    if (name.includes('ENGATIVA')) return 'engativa';
+    if (name.includes('SUBA')) return 'suba';
+    if (name.includes('BARRIOS UNIDOS')) return 'barriosunidos';
+    if (name.includes('TEUSAQUILLO')) return 'teusaquillo';
+    if (name.includes('MARTIRES')) return 'losmartires';
+    if (name.includes('ANTONIO NARI')) return 'antonionarino';
+    if (name.includes('PUENTE ARANDA')) return 'puentearanda';
+    if (name.includes('CANDELARIA')) return 'lacandelaria';
+    if (name.includes('RAFAEL URIBE')) return 'ruu';
+    if (name.includes('CIUDAD BOLIVAR')) return 'ciudadbolivar';
+    if (name.includes('SUMAPAZ')) return 'sumapaz';
+    return null;
+}
+
 export default function MapComponent({
     localidad,
     onLocalidadChange,
@@ -39,7 +70,8 @@ export default function MapComponent({
     simulationState,
     bikeSegments,
     constructionZones = [],
-    showConstruction = true
+    showConstruction = true,
+    mapLayers = { localities: true, cais: true, construction: true, accidents: true, robberies: true }
 }) {
     const mapContainerRef = useRef(null);
     const mapRef = useRef(null);
@@ -50,6 +82,9 @@ export default function MapComponent({
     const routeMarkersRef = useRef({});
     const customAuditMarkerRef = useRef(null);
     const constructionLayersRef = useRef([]);
+    const caiLayersRef = useRef([]);
+    const robberyLayersRef = useRef([]);
+    const accidentLayersRef = useRef([]);
 
     // Keep refs of callbacks to avoid re-triggering effects
     const callbacksRef = useRef({});
@@ -78,6 +113,8 @@ export default function MapComponent({
     useEffect(() => {
         if (!mapContainerRef.current) return;
 
+        let active = true;
+
         // Center initially in Usme
         const map = L.map(mapContainerRef.current, {
             zoomControl: true,
@@ -97,34 +134,30 @@ export default function MapComponent({
         fetch(`${import.meta.env.BASE_URL}localidades.json`)
             .then(res => res.json())
             .then(data => {
+                if (!active || !mapRef.current) return;
+
                 const geoJsonLayer = L.geoJSON(data, {
                     style: (feature) => {
-                        const locName = feature.properties.LocNombre.toUpperCase();
-                        if (locName.includes('USME')) {
-                            const isActive = localidadRef.current === 'usme';
+                        const locNameRaw = feature.properties.LocNombre;
+                        const key = getLocalityKey(locNameRaw);
+                        const config = localitiesMap[key];
+                        
+                        if (config) {
+                            const isActive = localidadRef.current === key;
+                            const isShown = mapLayers.localities;
                             return {
-                                color: '#6366f1',
-                                weight: isActive ? 3.5 : 1.5,
-                                fillColor: '#6366f1',
-                                fillOpacity: isActive ? 0.05 : 0.015,
-                                dashArray: isActive ? null : '3, 6'
-                            };
-                        } else if (locName.includes('RAFAEL URIBE')) {
-                            const isActive = localidadRef.current === 'ruu';
-                            return {
-                                color: '#a855f7',
-                                weight: isActive ? 3.5 : 1.5,
-                                fillColor: '#a855f7',
-                                fillOpacity: isActive ? 0.05 : 0.015,
-                                dashArray: isActive ? null : '3, 6'
+                                color: isShown ? config.color : 'rgba(0,0,0,0)',
+                                weight: isShown ? (isActive ? 4.5 : 2.2) : 0,
+                                opacity: isShown ? (isActive ? 1.0 : 0.65) : 0,
+                                fillColor: isShown ? config.color : 'rgba(0,0,0,0)',
+                                fillOpacity: isShown ? (isActive ? 0.12 : 0.035) : 0
                             };
                         } else {
                             return {
-                                color: 'rgba(255, 255, 255, 0.22)',
-                                weight: 1,
-                                fillColor: 'rgba(255, 255, 255, 0.03)',
-                                fillOpacity: 0.005,
-                                dashArray: '2, 4'
+                                color: 'rgba(255, 255, 255, 0.0)',
+                                weight: 0,
+                                fillColor: 'rgba(255, 255, 255, 0.0)',
+                                fillOpacity: 0.0
                             };
                         }
                     },
@@ -144,12 +177,10 @@ export default function MapComponent({
                             locName = locNameRaw.toLowerCase().replace(/\b\w/g, c => c.toUpperCase());
                         }
 
-                        // Store references to the active polygons
-                        const upperName = locNameRaw.toUpperCase();
-                        if (upperName.includes('USME')) {
-                            activePolygonsRef.current.usme = layer;
-                        } else if (upperName.includes('RAFAEL URIBE')) {
-                            activePolygonsRef.current.ruu = layer;
+                        // Store references to the polygons
+                        const key = getLocalityKey(locNameRaw);
+                        if (key) {
+                            activePolygonsRef.current[key] = layer;
                         }
 
                         // Bind hover tooltip
@@ -162,21 +193,29 @@ export default function MapComponent({
                         layer.on({
                             mouseover: (e) => {
                                 const l = e.target;
-                                const name = feature.properties.LocNombre.toUpperCase();
-                                if (!name.includes('USME') && !name.includes('RAFAEL URIBE')) {
+                                const k = getLocalityKey(locNameRaw);
+                                const config = localitiesMap[k];
+                                if (config) {
+                                    const isActive = localidadRef.current === k;
                                     l.setStyle({
-                                        color: 'rgba(255, 255, 255, 0.55)',
-                                        fillOpacity: 0.04
+                                        color: config.color,
+                                        weight: isActive ? 5 : 3,
+                                        opacity: 1.0,
+                                        fillOpacity: isActive ? 0.2 : 0.08
                                     });
                                 }
                             },
                             mouseout: (e) => {
                                 const l = e.target;
-                                const name = feature.properties.LocNombre.toUpperCase();
-                                if (!name.includes('USME') && !name.includes('RAFAEL URIBE')) {
+                                const k = getLocalityKey(locNameRaw);
+                                const config = localitiesMap[k];
+                                if (config) {
+                                    const isActive = localidadRef.current === k;
                                     l.setStyle({
-                                        color: 'rgba(255, 255, 255, 0.22)',
-                                        fillOpacity: 0.005
+                                        color: config.color,
+                                        weight: isActive ? 4.5 : 2.2,
+                                        opacity: isActive ? 1.0 : 0.65,
+                                        fillOpacity: isActive ? 0.12 : 0.035
                                     });
                                 }
                             },
@@ -187,25 +226,9 @@ export default function MapComponent({
                                     return;
                                 }
 
-                                const name = feature.properties.LocNombre.toUpperCase();
-                                if (name.includes('USME')) {
-                                    callbacksRef.current.onLocalidadChange('usme');
-                                } else if (name.includes('RAFAEL URIBE')) {
-                                    callbacksRef.current.onLocalidadChange('ruu');
-                                } else {
-                                    L.popup()
-                                        .setLatLng(e.latlng)
-                                        .setContent(`
-                                            <div style="color: #f8fafc; font-family: var(--font-body); font-size: 0.8rem; padding: 0.2rem;">
-                                                <h4 style="font-family: var(--font-heading); font-weight: 700; margin-bottom: 0.25rem; color: #a855f7;">
-                                                    Localidad de ${locName}
-                                                </h4>
-                                                <p style="margin: 0; color: #94a3b8; font-size: 0.75rem; line-height: 1.3;">
-                                                    La simulación predictiva de seguridad está activa en <b>Usme</b> y <b>Rafael Uribe Uribe</b>. ¡Próximamente más localidades!
-                                                </p>
-                                            </div>
-                                        `)
-                                        .openOn(mapRef.current);
+                                const k = getLocalityKey(locNameRaw);
+                                if (k && localitiesMap[k]) {
+                                    callbacksRef.current.onLocalidadChange(k);
                                 }
                             }
                         });
@@ -264,6 +287,7 @@ export default function MapComponent({
         });
 
         return () => {
+            active = false;
             map.remove();
             mapRef.current = null;
         };
@@ -289,40 +313,36 @@ export default function MapComponent({
         // Update GeoJSON styles dynamically
         if (localidadesLayerRef.current) {
             localidadesLayerRef.current.setStyle((feature) => {
-                const locName = feature.properties.LocNombre.toUpperCase();
-                if (locName.includes('USME')) {
-                    const isActive = localidad === 'usme';
+                const locNameRaw = feature.properties.LocNombre;
+                const key = getLocalityKey(locNameRaw);
+                const config = localitiesMap[key];
+
+                if (config) {
+                    const isActive = localidad === key;
+                    const isShown = mapLayers.localities;
                     return {
-                        color: '#6366f1',
-                        weight: isActive ? 3.5 : 1.5,
-                        fillOpacity: isActive ? 0.05 : 0.015,
-                        dashArray: isActive ? null : '3, 6'
-                    };
-                } else if (locName.includes('RAFAEL URIBE')) {
-                    const isActive = localidad === 'ruu';
-                    return {
-                        color: '#a855f7',
-                        weight: isActive ? 3.5 : 1.5,
-                        fillOpacity: isActive ? 0.05 : 0.015,
-                        dashArray: isActive ? null : '3, 6'
+                        color: isShown ? config.color : 'rgba(0,0,0,0)',
+                        weight: isShown ? (isActive ? 4.5 : 2.2) : 0,
+                        opacity: isShown ? (isActive ? 1.0 : 0.65) : 0,
+                        fillColor: isShown ? config.color : 'rgba(0,0,0,0)',
+                        fillOpacity: isShown ? (isActive ? 0.12 : 0.035) : 0
                     };
                 } else {
                     return {
-                        color: 'rgba(255, 255, 255, 0.22)',
-                        weight: 1,
-                        fillOpacity: 0.005,
-                        dashArray: '2, 4'
+                        color: 'rgba(255, 255, 255, 0.0)',
+                        weight: 0,
+                        fillColor: 'rgba(255, 255, 255, 0.0)',
+                        fillOpacity: 0.0
                     };
                 }
             });
         }
 
-        if (localidad === 'usme') {
-            map.flyTo([4.506, -74.115], 13, { duration: 1.5 });
-        } else {
-            map.flyTo([4.575, -74.122], 14, { duration: 1.5 });
+        const activeLocConfig = localitiesMap[localidad];
+        if (activeLocConfig) {
+            map.flyTo(activeLocConfig.center, activeLocConfig.zoom, { duration: 1.5 });
         }
-    }, [localidad]);
+    }, [localidad, mapLayers.localities]);
 
     // 4. Update route markers (Origin/Destination Pins)
     useEffect(() => {
@@ -407,7 +427,7 @@ export default function MapComponent({
         });
         constructionLayersRef.current = [];
 
-        if (!showConstruction) return;
+        if (!showConstruction || !mapLayers.construction) return;
 
         constructionZones.forEach(zone => {
             // 1. Circle representing the impact radius
@@ -477,7 +497,191 @@ export default function MapComponent({
             constructionLayersRef.current.push(circle);
             constructionLayersRef.current.push(marker);
         });
-    }, [constructionZones, showConstruction]);
+    }, [constructionZones, showConstruction, mapLayers.construction]);
+
+    // 5c. Update active CAIs overlays on the map
+    useEffect(() => {
+        const map = mapRef.current;
+        if (!map) return;
+
+        // Clear existing CAI layers
+        caiLayersRef.current.forEach(layer => {
+            map.removeLayer(layer);
+        });
+        caiLayersRef.current = [];
+
+        if (!mapLayers.cais) return;
+
+        caiPoints.forEach(cai => {
+            const marker = L.marker([cai.lat, cai.lng], {
+                icon: L.divIcon({
+                    className: 'cai-marker-wrapper',
+                    html: `
+                        <div class="cai-marker" style="
+                            width: 28px;
+                            height: 28px;
+                            background: #1e3a8a;
+                            border: 2px solid #38bdf8;
+                            border-radius: 50%;
+                            display: flex;
+                            align-items: center;
+                            justify-content: center;
+                            color: #fff;
+                            box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+                            cursor: pointer;
+                        ">
+                            <i class="fa-solid fa-shield-halved" style="font-size: 13px;"></i>
+                        </div>
+                    `,
+                    iconSize: [28, 28],
+                    iconAnchor: [14, 14]
+                })
+            });
+
+            const popupContent = `
+                <div style="color: #f8fafc; font-family: var(--font-body); font-size: 0.78rem; padding: 0.25rem; min-width: 180px;">
+                    <h4 style="font-family: var(--font-heading); font-size: 0.85rem; font-weight: 700; margin-bottom: 0.35rem; color: #38bdf8; display: flex; align-items: center; gap: 0.35rem;">
+                        <i class="fa-solid fa-shield-halved"></i> ${cai.name}
+                    </h4>
+                    <p style="margin: 0 0 0.4rem 0; font-weight: 600; color: #f1f5f9;">Policía Metropolitana de Bogotá</p>
+                    <p style="margin: 0 0 0.4rem 0; font-size: 0.7rem; color: #94a3b8;"><b>Localidad:</b> ${cai.localidad.toUpperCase()}</p>
+                    <p style="margin: 0 0 0.4rem 0; font-size: 0.72rem; color: #cbd5e1; line-height: 1.35;"><b>Dirección:</b> ${cai.address}</p>
+                    <div style="border-top: 1px solid rgba(255,255,255,0.08); padding-top: 0.4rem; margin-top: 0.4rem; font-size: 0.65rem; color: #10b981; font-weight: 700; display: flex; align-items: center; gap: 0.25rem;">
+                        <span style="display:inline-block; width: 6px; height: 6px; border-radius: 50%; background: #10b981; animation: pulseGlow 1.5s infinite alternate;"></span>
+                        <span>Activo • Vigilancia 24h</span>
+                    </div>
+                </div>
+            `;
+
+            marker.bindPopup(popupContent, { className: 'custom-leaflet-popup' });
+            marker.bindTooltip(`<strong>CAI:</strong> ${cai.name}`, { sticky: true, className: 'custom-tooltip' });
+
+            marker.addTo(map);
+            caiLayersRef.current.push(marker);
+        });
+    }, [mapLayers.cais]);
+
+    // 5d. Update active Robbery Reports overlays on the map
+    useEffect(() => {
+        const map = mapRef.current;
+        if (!map) return;
+
+        // Clear existing robbery layers
+        robberyLayersRef.current.forEach(layer => {
+            map.removeLayer(layer);
+        });
+        robberyLayersRef.current = [];
+
+        if (!mapLayers.robberies) return;
+
+        robberyReports.forEach(rob => {
+            const marker = L.marker([rob.lat, rob.lng], {
+                icon: L.divIcon({
+                    className: 'robbery-marker-wrapper',
+                    html: `
+                        <div class="robbery-marker" style="
+                            width: 28px;
+                            height: 28px;
+                            background: #ef4444;
+                            border: 2px solid #fca5a5;
+                            border-radius: 50%;
+                            display: flex;
+                            align-items: center;
+                            justify-content: center;
+                            color: #fff;
+                            box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+                            cursor: pointer;
+                        ">
+                            <i class="fa-solid fa-mask" style="font-size: 13px;"></i>
+                        </div>
+                    `,
+                    iconSize: [28, 28],
+                    iconAnchor: [14, 14]
+                })
+            });
+
+            const popupContent = `
+                <div style="color: #f8fafc; font-family: var(--font-body); font-size: 0.78rem; padding: 0.25rem; min-width: 180px;">
+                    <h4 style="font-family: var(--font-heading); font-size: 0.85rem; font-weight: 700; margin-bottom: 0.35rem; color: #ef4444; display: flex; align-items: center; gap: 0.35rem;">
+                        <i class="fa-solid fa-mask"></i> ${rob.name}
+                    </h4>
+                    <p style="margin: 0 0 0.4rem 0; font-weight: 600; color: #f1f5f9;">Reporte de Hurto (Últimas 24h)</p>
+                    <p style="margin: 0 0 0.4rem 0; font-size: 0.7rem; color: #94a3b8;"><b>Localidad:</b> ${rob.localidad.toUpperCase()} • <b>Hora:</b> ${rob.time}</p>
+                    <p style="margin: 0 0 0.4rem 0; font-size: 0.72rem; color: #cbd5e1; line-height: 1.35;"><b>Detalle:</b> ${rob.description}</p>
+                    <div style="border-top: 1px solid rgba(255,255,255,0.08); padding-top: 0.4rem; margin-top: 0.4rem; font-size: 0.65rem; color: #ef4444; font-weight: 700;">
+                        <span>Caso Reportado a Policía Cuadrante</span>
+                    </div>
+                </div>
+            `;
+
+            marker.bindPopup(popupContent, { className: 'custom-leaflet-popup' });
+            marker.bindTooltip(`<strong>Hurto:</strong> ${rob.name} (${rob.time})`, { sticky: true, className: 'custom-tooltip' });
+
+            marker.addTo(map);
+            robberyLayersRef.current.push(marker);
+        });
+    }, [mapLayers.robberies]);
+
+    // 5e. Update active Accident overlays on the map
+    useEffect(() => {
+        const map = mapRef.current;
+        if (!map) return;
+
+        // Clear existing accident layers
+        accidentLayersRef.current.forEach(layer => {
+            map.removeLayer(layer);
+        });
+        accidentLayersRef.current = [];
+
+        if (!mapLayers.accidents) return;
+
+        accidentPoints.forEach(acc => {
+            const marker = L.marker([acc.lat, acc.lng], {
+                icon: L.divIcon({
+                    className: 'accident-marker-wrapper',
+                    html: `
+                        <div class="accident-marker" style="
+                            width: 28px;
+                            height: 28px;
+                            background: #eab308;
+                            border: 2px solid #fde047;
+                            border-radius: 50%;
+                            display: flex;
+                            align-items: center;
+                            justify-content: center;
+                            color: #000;
+                            box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+                            cursor: pointer;
+                        ">
+                            <i class="fa-solid fa-car-burst" style="font-size: 13px;"></i>
+                        </div>
+                    `,
+                    iconSize: [28, 28],
+                    iconAnchor: [14, 14]
+                })
+            });
+
+            const popupContent = `
+                <div style="color: #f8fafc; font-family: var(--font-body); font-size: 0.78rem; padding: 0.25rem; min-width: 180px;">
+                    <h4 style="font-family: var(--font-heading); font-size: 0.85rem; font-weight: 700; margin-bottom: 0.35rem; color: #eab308; display: flex; align-items: center; gap: 0.35rem;">
+                        <i class="fa-solid fa-car-burst"></i> ${acc.name}
+                    </h4>
+                    <p style="margin: 0 0 0.4rem 0; font-weight: 600; color: #f1f5f9;">Accidente de Tránsito Reciente</p>
+                    <p style="margin: 0 0 0.4rem 0; font-size: 0.7rem; color: #94a3b8;"><b>Localidad:</b> ${acc.localidad.toUpperCase()} • <b>Hora:</b> ${acc.time} • <b>Severidad:</b> ${acc.severity}</p>
+                    <p style="margin: 0 0 0.4rem 0; font-size: 0.72rem; color: #cbd5e1; line-height: 1.35;"><b>Detalle:</b> ${acc.description}</p>
+                    <div style="border-top: 1px solid rgba(255,255,255,0.08); padding-top: 0.4rem; margin-top: 0.4rem; font-size: 0.65rem; color: #eab308; font-weight: 700;">
+                        <span>Tránsito Bogotá Regulando</span>
+                    </div>
+                </div>
+            `;
+
+            marker.bindPopup(popupContent, { className: 'custom-leaflet-popup' });
+            marker.bindTooltip(`<strong>Tránsito:</strong> ${acc.name} (${acc.time})`, { sticky: true, className: 'custom-tooltip' });
+
+            marker.addTo(map);
+            accidentLayersRef.current.push(marker);
+        });
+    }, [mapLayers.accidents]);
 
     // 6. Draw route polylines dynamically segmented by CPTED risk
     useEffect(() => {
@@ -503,7 +707,7 @@ export default function MapComponent({
                 const midLat = (pt1[0] + pt2[0]) / 2;
                 const midLng = (pt1[1] + pt2[1]) / 2;
                 
-                const risk = evaluateCoordinateRisk(midLat, midLng, bikeSegments, simulationState);
+                const risk = evaluateCoordinateRisk(midLat, midLng, bikeSegments, simulationState, constructionZones, showConstruction);
                 const color = getRiskColor(risk.level);
                 
                 const polyline = L.polyline([pt1, pt2], {
@@ -547,34 +751,11 @@ export default function MapComponent({
             const segment = bikeSegments[selectedSegmentId];
             if (!segment) return;
 
-            // Recalculate segment risk
-            const baseValue = 5.0;
-            let shapCrime = 0.0;
-            if (segment.baselineCrime === 'Alto') shapCrime = 2.4;
-            else if (segment.baselineCrime === 'Medio') shapCrime = 0.2;
-            else if (segment.baselineCrime === 'Bajo') shapCrime = -2.1;
+            // Recalculate segment risk using our helper
+            const segmentWithState = { ...segment, ...simulationState };
+            const prediction = calculateRisk(segmentWithState, constructionZones, showConstruction);
 
-            const { weather, lightingType, watts, visibility, guardianCai, guardianRuta } = simulationState;
-
-            const shapWeather = (weather === 'lluvia') ? 1.4 : -0.3;
-            const shapLightingTech = (lightingType === 'Sodio') ? 0.7 : -0.8;
-            const shapLightingPower = 0.4 - ((watts - 50) / 200) * 1.1;
-
-            let shapVisibility = 0.0;
-            if (visibility === 1) shapVisibility = 0.9;
-            else if (visibility === 3) shapVisibility = -1.0;
-
-            const shapCai = guardianCai ? -1.3 : 0.0;
-            const shapRuta = guardianRuta ? -0.9 : 0.0;
-
-            let score = baseValue + shapCrime + shapWeather + shapLightingTech + shapLightingPower + shapVisibility + (shapCai + shapRuta);
-            score = Math.max(0.5, Math.min(9.5, score));
-
-            let level = 'Bajo';
-            if (score >= 7.0) level = 'Alto';
-            else if (score >= 3.8) level = 'Medio';
-
-            const color = getRiskColor(level);
+            const color = getRiskColor(prediction.level);
             const layer = segmentLayersRef.current[selectedSegmentId];
             
             layer.setStyle({
@@ -611,7 +792,7 @@ export default function MapComponent({
             
             {/* Map Legend Overlay */}
             <div className="map-legend">
-                <h4>Riesgo del Tramo</h4>
+                <h4>Leyenda de Riesgo</h4>
                 <div className="legend-items">
                     <span className="legend-item"><span className="color-dot dot-low"></span> Bajo</span>
                     <span className="legend-item"><span className="color-dot dot-mid"></span> Medio</span>
