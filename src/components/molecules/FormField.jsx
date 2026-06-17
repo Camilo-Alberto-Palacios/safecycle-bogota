@@ -141,9 +141,9 @@ export default function FormField({
     };
 
     return (
-        <div className="route-input-group">
-            <div className="input-with-icon">
-                <i className={iconClass}></i>
+        <div className="route-input-group w-full">
+            <div className="input-with-icon w-full relative flex items-center bg-slate-100/80 border border-slate-200/60 rounded-xl px-3 py-2">
+                <i className={`${iconClass} flex-shrink-0 mr-2`}></i>
                 <Input
                     value={value}
                     onChange={(e) => {
@@ -156,39 +156,40 @@ export default function FormField({
                     onFocus={() => setShowDropdown(true)}
                     onBlur={() => setTimeout(() => setShowDropdown(false), 200)}
                     placeholder={placeholder}
+                    className="w-full bg-transparent border-none outline-none text-slate-800 text-xs py-0.5"
                 />
 
                 {/* Dropdown de Sugerencias */}
                 {showDropdown && (suggestions.length > 0 || loading) && (
-                    <ul className="suggestions-dropdown">
+                    <ul className="suggestions-dropdown absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-lg z-50 max-h-60 overflow-y-auto">
                         {loading ? (
-                            <li className="suggestion-info">
+                            <li className="suggestion-info p-3 text-xs text-slate-500 flex items-center gap-2">
                                 <i className="fa-solid fa-spinner fa-spin"></i> Buscando...
                             </li>
                         ) : (
                             suggestions.map((s, idx) => (
                                 <li
                                     key={idx}
-                                    className={`suggestion-item ${s.type}-item`}
+                                    className={`suggestion-item ${s.type}-item p-2.5 hover:bg-slate-100 cursor-pointer text-xs text-slate-700 flex items-center gap-2 border-b border-slate-100 last:border-none`}
                                     onMouseDown={() => handleSelect(s)}
                                 >
                                     <i className={
                                         s.type === 'preset' 
-                                            ? 'fa-solid fa-star' 
-                                            : (s.type === 'gps' ? 'fa-solid fa-location-arrow' : 'fa-solid fa-location-dot')
+                                            ? 'fa-solid fa-star text-amber-500' 
+                                            : (s.type === 'gps' ? 'fa-solid fa-location-arrow text-emerald-600' : 'fa-solid fa-location-dot text-slate-400')
                                     }></i>
                                     <span>{s.name}</span>
                                 </li>
                             ))
                         )}
                         {!loading && suggestions.length === 0 && (
-                            <li className="suggestion-info">No se encontraron resultados</li>
+                            <li className="suggestion-info p-3 text-xs text-slate-500">No se encontraron resultados</li>
                         )}
                     </ul>
                 )}
             </div>
 
-            {/* Botón de GPS */}
+            {/* Buttons rendered outside the input */}
             {showGpsButton && (
                 <Button
                     variant="icon-select"
@@ -199,8 +200,6 @@ export default function FormField({
                     <i className={`fa-solid ${gpsLoading ? 'fa-spinner fa-spin' : 'fa-location-arrow'}`}></i>
                 </Button>
             )}
-
-            {/* Botón de Seleccionar en el Mapa */}
             {onSelectOnMap && (
                 <Button
                     variant="icon-select"

@@ -2,6 +2,8 @@ import React from 'react';
 import FormField from '../molecules/FormField';
 import Button from '../atoms/Button';
 import Switch from '../atoms/Switch';
+import ToggleGroup from '../molecules/ToggleGroup';
+import { localitiesMap } from '../../data/bikeSegments';
 
 export default function RoutePlanner({
     originInput,
@@ -17,7 +19,12 @@ export default function RoutePlanner({
     onSelectOriginLocation,
     onSelectDestLocation,
     mapLayers = { localities: true, cais: true, construction: true, accidents: true, robberies: true },
-    onMapLayersChange
+    onMapLayersChange,
+    showBrandLogo = false,
+    localidad,
+    onLocalidadChange,
+    viewMode,
+    onViewModeChange
 }) {
     const handleToggle = (key, val) => {
         if (onMapLayersChange) {
@@ -30,6 +37,40 @@ export default function RoutePlanner({
 
     return (
         <div className="route-planner-card">
+            {showBrandLogo && (
+                <div className="flex flex-col gap-3.5 mb-3.5 animate-fade-in border-b border-slate-200/50 pb-3.5">
+                    <div className="flex items-center gap-2">
+                        <img src={`${import.meta.env.BASE_URL}Logo.svg`} alt="Ruta Clara Logo" className="w-8 h-8" />
+                        <h1 className="font-extrabold text-lg text-emerald-700">Ruta Clara</h1>
+                    </div>
+                    <div className="flex items-center gap-3">
+                        <div className="locality-select-wrapper">
+                            <i className="fa-solid fa-map-location-dot select-icon"></i>
+                            <select 
+                                value={localidad} 
+                                onChange={(e) => onLocalidadChange(e.target.value)}
+                                className="minimal-select"
+                                aria-label="Selección de Localidad"
+                            >
+                                {Object.keys(localitiesMap).map(key => (
+                                    <option key={key} value={key}>
+                                        {localitiesMap[key].name}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+                        <ToggleGroup
+                            options={[
+                                { value: 'citizen', label: 'Ciudadano' },
+                                { value: 'tech', label: 'Científico' }
+                            ]}
+                            activeValue={viewMode}
+                            onChange={onViewModeChange}
+                            ariaLabel="Modo de Vista"
+                        />
+                    </div>
+                </div>
+            )}
             <h3>
                 <i className="fa-solid fa-route text-accent"></i> Planificador de Rutas
             </h3>

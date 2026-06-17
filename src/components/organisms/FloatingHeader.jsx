@@ -6,7 +6,8 @@ export default function FloatingHeader({
     localidad,
     onLocalidadChange,
     viewMode,
-    onViewModeChange
+    onViewModeChange,
+    hideLogo = false
 }) {
     const viewModeOpts = [
         { value: 'citizen', label: 'Ciudadano' },
@@ -15,14 +16,16 @@ export default function FloatingHeader({
 
     return (
         <header className="app-header floating-header-card">
-            <div className="header-logo">
-                <div className="logo-icon" style={{ background: 'transparent', boxShadow: 'none', borderRadius: '0', animation: 'none' }}>
-                    <img src={`${import.meta.env.BASE_URL}Logo.svg`} alt="Ruta Clara Logo" style={{ width: '32px', height: '32px' }} />
+            {!hideLogo && (
+                <div className="header-logo animate-fade-in">
+                    <div className="logo-icon" style={{ background: 'transparent', boxShadow: 'none', borderRadius: '0', animation: 'none' }}>
+                        <img src={`${import.meta.env.BASE_URL}Logo.svg`} alt="Ruta Clara Logo" style={{ width: '32px', height: '32px' }} />
+                    </div>
+                    <div className="logo-text">
+                        <h1>Ruta <span>Clara</span></h1>
+                    </div>
                 </div>
-                <div className="logo-text">
-                    <h1>Ruta <span>Clara</span></h1>
-                </div>
-            </div>
+            )}
             
             <div className="header-controls">
                 <div className="locality-select-wrapper">
