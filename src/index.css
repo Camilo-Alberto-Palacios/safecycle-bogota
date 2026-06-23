@@ -49,6 +49,10 @@
     --radius-xl: 20px;
     --shadow-main: 0 15px 35px -10px rgba(23, 142, 59, 0.08);
     --transition-smooth: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    --bg-hover: rgba(15, 23, 42, 0.04);
+    --bg-surface: rgba(255, 255, 255, 0.95);
+    --text-on-surface: #1e293b;
+    --border-surface: rgba(148, 163, 184, 0.3);
 }
 
 /* Base Styles */
@@ -1209,8 +1213,8 @@ input:checked+.slider-round:before {
 .map-legend {
     position: absolute;
     bottom: 2rem;
-    left: 410px;
-    /* offset to avoid left drawer */
+    left: 460px;
+    /* offset to avoid left drawer (436px wide) */
     z-index: 850;
     background: var(--bg-card);
     backdrop-filter: var(--glass-blur);
@@ -1263,7 +1267,36 @@ input:checked+.slider-round:before {
     box-shadow: var(--glow-high);
 }
 
-/* Animations */
+/* Route Focus Mode Banner */
+.route-focus-banner {
+    position: absolute;
+    top: 1rem;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 900;
+    background: rgba(99, 102, 241, 0.88);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(165, 180, 252, 0.4);
+    padding: 0.45rem 1.1rem;
+    border-radius: 2rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #fff;
+    box-shadow: 0 4px 20px rgba(99, 102, 241, 0.5);
+    white-space: nowrap;
+    animation: fadeInDown 0.3s ease;
+    pointer-events: none;
+}
+
+@keyframes fadeInDown {
+    from { opacity: 0; transform: translateX(-50%) translateY(-8px); }
+    to { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+
+
 @keyframes pulseGlow {
     from {
         box-shadow: 0 0 10px rgba(23, 142, 59, 0.3);
@@ -1551,6 +1584,10 @@ input:checked+.slider-round:before {
         bottom: 1rem;
         left: 1rem;
         padding: 0.5rem 0.75rem;
+    }
+
+    .map-legend.mobile-shifted {
+        bottom: 5.5rem;
     }
 }
 
@@ -2018,4 +2055,660 @@ input:checked+.slider-round:before {
 .report-item-meta {
     font-size: 0.65rem;
     color: var(--text-muted);
+}
+
+/* ==========================================
+   Sidebar vertical icon tabs for Desktop left drawer
+   ========================================== */
+.sidebar-tabs-vertical {
+    width: 56px;
+    height: 100%;
+    background: rgba(15, 23, 42, 0.05);
+    border-right: 1px solid var(--border-color);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 1.25rem 0;
+    gap: 0.85rem;
+    flex-shrink: 0;
+}
+
+.tab-vertical-btn {
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.15rem;
+    cursor: pointer;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.tab-vertical-btn:hover {
+    background: rgba(15, 23, 42, 0.06);
+    color: var(--text-primary);
+}
+
+.tab-vertical-btn.active {
+    background: var(--accent-gradient, linear-gradient(135deg, #10b981, #059669));
+    color: #ffffff !important;
+    box-shadow: 0 4px 12px rgba(16, 185, 129, 0.35);
+}
+
+/* Force left drawer to render sidebar and content side by side */
+.floating-drawer.left-drawer {
+    display: flex !important;
+    flex-direction: row !important;
+    width: 436px !important; /* 380px original content + 56px sidebar vertical tab bar */
+    padding: 0 !important;
+}
+
+.floating-drawer.left-drawer.closed {
+    transform: translateX(-436px) !important;
+}
+
+.left-drawer .drawer-content.scrollable {
+    flex: 1 !important;
+    padding: 1.5rem !important;
+}
+
+/* No scrollbar for tabs on mobile */
+.no-scrollbar::-webkit-scrollbar {
+    display: none;
+}
+.no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+}
+
+/* ==========================================
+   Navigation Controls Card (Panel Nav)
+   ========================================== */
+.navigation-controls-card {
+    display: flex;
+    flex-direction: column;
+    gap: 0.85rem;
+}
+
+.navigation-controls-card h3 {
+    font-family: var(--font-heading);
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin: 0;
+}
+
+.navigation-desc {
+    font-size: 0.74rem;
+    color: var(--text-secondary);
+    line-height: 1.5;
+    margin: 0;
+}
+
+/* Warning box when no route is selected */
+.nav-warning-box {
+    background: rgba(239, 68, 68, 0.08);
+    border: 1px solid rgba(239, 68, 68, 0.25);
+    border-radius: 12px;
+    padding: 0.85rem;
+    color: #ef4444;
+    font-size: 0.74rem;
+    line-height: 1.5;
+    display: flex;
+    gap: 0.5rem;
+    align-items: flex-start;
+}
+
+body.dark-mode .nav-warning-box {
+    background: rgba(239, 68, 68, 0.12);
+    border-color: rgba(239, 68, 68, 0.3);
+}
+
+/* Active route status banner */
+.nav-status-banner {
+    background: var(--bg-hover);
+    border: 1px solid rgba(99, 102, 241, 0.3);
+    border-radius: 12px;
+    padding: 0.75rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+body.dark-mode .nav-status-banner {
+    background: rgba(99, 102, 241, 0.1);
+    border-color: rgba(99, 102, 241, 0.4);
+}
+
+/* Speed multiplier track */
+.speed-multiplier-track {
+    display: flex;
+    gap: 0.25rem;
+    background: var(--bg-hover);
+    border: 1px solid var(--border-color);
+    padding: 2px;
+    border-radius: 8px;
+}
+
+body.dark-mode .speed-multiplier-track {
+    background: rgba(255, 255, 255, 0.06);
+    border-color: rgba(255, 255, 255, 0.1);
+}
+
+/* ==========================================
+   Cockpit HUD (Heads-Up Display) Overlay
+   ========================================== */
+.cockpit-hud-overlay {
+
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 9999;
+    background: linear-gradient(to top, rgba(15, 23, 42, 0.98) 75%, rgba(15, 23, 42, 0.90));
+    backdrop-filter: blur(20px) saturate(180%);
+    border-top: 2px solid rgba(16, 185, 129, 0.4);
+    padding: 1rem 2rem 2.5rem 2rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.85rem;
+    align-items: center;
+    box-shadow: 0 -15px 40px rgba(0, 0, 0, 0.5);
+}
+
+.hud-header {
+    display: flex;
+    justify-content: space-around;
+    width: 100%;
+    max-width: 600px;
+    gap: 1.5rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    padding-bottom: 0.75rem;
+}
+
+.hud-stat-box {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    flex: 1;
+}
+
+.hud-stat-label {
+    font-size: 0.65rem;
+    font-weight: 700;
+    color: #64748b;
+    letter-spacing: 0.1em;
+}
+
+.hud-stat-value {
+    font-family: var(--font-heading);
+    font-size: 1.35rem;
+    font-weight: 800;
+    color: #f8fafc;
+    display: flex;
+    align-items: baseline;
+    gap: 0.15rem;
+}
+
+.hud-unit {
+    font-size: 0.7rem;
+    color: #64748b;
+    font-weight: 500;
+}
+
+.hud-recommendation-banner {
+    width: 100%;
+    max-width: 600px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 8px;
+    padding: 0.5rem 1rem;
+    text-align: center;
+}
+
+.hud-rec-text {
+    font-size: 0.74rem;
+    font-weight: 600;
+    color: #cbd5e1;
+    margin: 0;
+}
+
+.hud-exit-btn {
+    position: absolute;
+    right: 2rem;
+    top: 1rem;
+    background: rgba(239, 68, 68, 0.15);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    color: #f87171;
+    font-size: 0.72rem;
+    font-weight: 700;
+    padding: 0.4rem 0.85rem;
+    border-radius: 20px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+}
+
+.hud-exit-btn:hover {
+    background: #ef4444;
+    color: #ffffff;
+    border-color: transparent;
+}
+
+/* Glassmorphic handlebar/cockpit visual styling */
+.hud-handlebar-cockpit {
+    position: relative;
+    width: 100%;
+    max-width: 700px;
+    height: 30px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-top: 0.25rem;
+}
+
+.handlebar-left,
+.handlebar-right {
+    flex: 1;
+    height: 8px;
+    background: linear-gradient(to bottom, #475569, #0f172a);
+    border-radius: 4px;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+}
+
+.handlebar-left {
+    border-right: 15px solid #1e293b;
+    margin-right: -10px;
+}
+
+.handlebar-right {
+    border-left: 15px solid #1e293b;
+    margin-left: -10px;
+}
+
+.handlebar-center {
+    width: 120px;
+    height: 12px;
+    background: #0f172a;
+    border: 2px solid #334155;
+    border-radius: 6px;
+    position: relative;
+    display: flex;
+    justify-content: center;
+}
+
+.bike-computer {
+    position: absolute;
+    bottom: -5px;
+    width: 90px;
+    height: 40px;
+    background: rgba(30, 41, 59, 0.95);
+    border: 2px solid #475569;
+    border-radius: 8px;
+    box-shadow: 0 8px 16px rgba(0,0,0,0.6), inset 0 0 10px rgba(16, 185, 129, 0.1);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.25rem;
+}
+
+.computer-screen {
+    width: 100%;
+    height: 100%;
+    background: #020617;
+    border: 1px solid #1e293b;
+    border-radius: 4px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    padding: 0.2rem 0.35rem;
+    font-family: monospace;
+    font-size: 0.55rem;
+    color: #10b981;
+}
+
+.computer-screen .time-display {
+    text-align: right;
+    font-weight: 700;
+}
+
+.computer-screen .battery-icon {
+    font-size: 0.5rem;
+    opacity: 0.85;
+}
+
+/* 3D Map Transform transitions */
+.leaflet-map-pane {
+    transition: transform 0.4s ease-out !important;
+}
+
+/* Upward slide animations */
+.animate-slide-up {
+    animation: slideUp 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes slideUp {
+    from {
+        transform: translateY(100%);
+    }
+    to {
+        transform: translateY(0);
+    }
+}
+
+/* ==========================================
+   Mobile Floating Action Buttons (FABs)
+   ========================================== */
+.fab-btn {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.85);
+    backdrop-filter: blur(10px) saturate(180%);
+    border: 1px solid rgba(226, 232, 240, 0.8);
+    color: #334155;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.1rem;
+    cursor: pointer;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.fab-btn:hover {
+    background: rgba(255, 255, 255, 0.95);
+    transform: translateY(-2px);
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.18);
+}
+
+.fab-btn:active {
+    transform: translateY(0);
+}
+
+.fab-btn.active {
+    background: var(--accent-gradient, linear-gradient(135deg, #10b981, #059669));
+    color: #ffffff !important;
+    border-color: transparent;
+    box-shadow: 0 4px 12px rgba(16, 185, 129, 0.35);
+}
+
+@media (max-width: 768px) {
+    .fab-btn {
+        width: 46px;
+        height: 46px;
+        font-size: 1.15rem;
+    }
+}
+
+/* Fade-in animation */
+.animate-fade-in {
+    animation: fadeIn 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: scale(0.97);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+/* ==========================================
+   Dark Mode Premium Theme Overrides
+   ========================================== */
+body.dark-mode {
+    --bg-main: #0b0f19;
+    --bg-card: rgba(30, 41, 59, 0.85);
+    --bg-card-hover: rgba(30, 41, 59, 0.98);
+    --border-color: rgba(255, 255, 255, 0.1);
+    --text-primary: #f8fafc;
+    --text-secondary: #cbd5e1;
+    --text-muted: #94a3b8;
+    --bg-hover: rgba(255, 255, 255, 0.06);
+    --bg-surface: rgba(15, 23, 42, 0.97);
+    --text-on-surface: #f1f5f9;
+    --border-surface: rgba(255, 255, 255, 0.1);
+}
+
+body.dark-mode .sidebar-tabs-vertical {
+    background: rgba(255, 255, 255, 0.03);
+}
+
+body.dark-mode .app-header {
+    background: rgba(30, 41, 59, 0.8);
+}
+
+body.dark-mode .route-planner-card select,
+body.dark-mode .minimal-select {
+    background: rgba(255, 255, 255, 0.05);
+    color: #f8fafc;
+}
+
+body.dark-mode .input-with-icon {
+    background: rgba(255, 255, 255, 0.05);
+}
+
+body.dark-mode .btn-location-select {
+    background: rgba(255, 255, 255, 0.05);
+}
+
+body.dark-mode .suggestion-item:hover {
+    background: rgba(255, 255, 255, 0.05);
+}
+
+body.dark-mode .suggestion-item {
+    color: #cbd5e1;
+    background: #1e293b;
+    border-color: rgba(255, 255, 255, 0.08);
+}
+
+body.dark-mode .suggestions-dropdown {
+    background: #1e293b;
+    border-color: rgba(255, 255, 255, 0.08);
+}
+
+body.dark-mode .minimal-select option {
+    background: #1e293b;
+    color: #f8fafc;
+}
+
+body.dark-mode .custom-input {
+    color: #f8fafc;
+}
+
+/* Ensure Leaflet controls and popups blend in dark mode */
+body.dark-mode .leaflet-popup-content-wrapper,
+body.dark-mode .leaflet-popup-tip {
+    background: #1e293b !important;
+    color: #f8fafc !important;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+body.dark-mode .custom-tooltip {
+    background: #1e293b !important;
+    color: #f8fafc !important;
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+}
+
+body.dark-mode .map-legend {
+    background: rgba(30, 41, 59, 0.85);
+    border-color: rgba(255, 255, 255, 0.1);
+}
+
+/* Ensure mobile items adjust */
+body.dark-mode .absolute.top-4.left-4.right-4.z-10 {
+    background: rgba(30, 41, 59, 0.95);
+    color: #f8fafc;
+    border-color: rgba(255, 255, 255, 0.1);
+}
+
+body.dark-mode .fab-btn {
+    background: rgba(30, 41, 59, 0.85);
+    color: #cbd5e1;
+    border-color: rgba(255, 255, 255, 0.08);
+}
+
+body.dark-mode .fab-btn:hover {
+    background: rgba(30, 41, 59, 0.95);
+}
+
+body.dark-mode .fab-btn.active {
+    background: var(--accent-gradient, linear-gradient(135deg, #10b981, #059669));
+    color: #ffffff !important;
+}
+
+body.dark-mode .absolute.right-12.top-0 {
+    background: rgba(30, 41, 59, 0.95);
+    color: #f8fafc;
+    border-color: rgba(255, 255, 255, 0.1);
+}
+
+body.dark-mode .fixed.bottom-0.left-4.right-4 {
+    background: rgba(30, 41, 59, 0.95);
+    color: #f8fafc;
+    border-color: rgba(255, 255, 255, 0.1);
+}
+
+body.dark-mode .flex.bg-slate-100 {
+    background: rgba(255, 255, 255, 0.05);
+}
+
+body.dark-mode .text-slate-800 {
+    color: #f8fafc !important;
+}
+
+body.dark-mode .text-slate-700 {
+    color: #cbd5e1 !important;
+}
+
+body.dark-mode .text-slate-600 {
+    color: #94a3b8 !important;
+}
+
+body.dark-mode .text-slate-650 {
+    color: #cbd5e1 !important;
+}
+
+body.dark-mode .bg-slate-100 {
+    background-color: rgba(255, 255, 255, 0.05) !important;
+}
+
+body.dark-mode .border-slate-100 {
+    border-color: rgba(255, 255, 255, 0.08) !important;
+}
+
+body.dark-mode .border-slate-200 {
+    border-color: rgba(255, 255, 255, 0.08) !important;
+}
+
+/* ==========================================
+   Dark Mode: Mobile UI (Top Bar, Bottom Sheet, Tabs)
+   ========================================== */
+
+/* Mobile top planner card & route bar */
+body.dark-mode .absolute.top-4.left-4 {
+    background: rgba(15, 23, 42, 0.97) !important;
+    color: var(--text-primary) !important;
+    border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+/* Mobile bottom sheet */
+body.dark-mode .fixed.bottom-0.left-4 {
+    background: rgba(15, 23, 42, 0.97) !important;
+    color: var(--text-primary) !important;
+    border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+/* Mobile bottom sheet handle bar */
+body.dark-mode .w-12.h-1\.5.bg-slate-300 {
+    background-color: rgba(255, 255, 255, 0.2) !important;
+}
+
+/* Tab pills inside bottom sheet */
+body.dark-mode .flex.bg-slate-100.p-1 {
+    background: rgba(255, 255, 255, 0.06) !important;
+    border-color: rgba(255, 255, 255, 0.08) !important;
+}
+
+/* Inactive tab buttons */
+body.dark-mode .text-slate-650.hover\:bg-slate-200\/60 {
+    color: #94a3b8 !important;
+}
+
+/* Mobile full-screen search overlay already dark — no override needed */
+
+/* Desktop footer pill */
+body.dark-mode footer.absolute {
+    background: rgba(15, 23, 42, 0.9) !important;
+    color: #94a3b8 !important;
+    border-color: rgba(255, 255, 255, 0.08) !important;
+}
+
+/* Drawer handle toggle */
+body.dark-mode .drawer-toggle-btn {
+    background: rgba(30, 41, 59, 0.9) !important;
+    color: #cbd5e1 !important;
+    border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+/* Floating drawer background */
+body.dark-mode .floating-drawer {
+    background: rgba(11, 15, 25, 0.97) !important;
+    border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+/* Route active mini bar on mobile */
+body.dark-mode .rounded-2xl.shadow-lg {
+    background: rgba(15, 23, 42, 0.97) !important;
+    border-color: rgba(255, 255, 255, 0.1) !important;
+    color: var(--text-primary) !important;
+}
+
+/* Bottom sheet border-t dividers */
+body.dark-mode .border-slate-100 {
+    border-color: rgba(255, 255, 255, 0.06) !important;
+}
+
+/* Expanded bottom sheet content text */
+body.dark-mode .text-slate-850 {
+    color: #f1f5f9 !important;
+}
+
+/* Back arrow button on mobile route bar */
+body.dark-mode .w-8.h-8.rounded-full.bg-slate-100 {
+    background: rgba(255, 255, 255, 0.08) !important;
+    color: #cbd5e1 !important;
+}
+
+/* Edit button on mobile route bar */
+body.dark-mode .bg-emerald-50 {
+    background: rgba(16, 185, 129, 0.15) !important;
+    color: #10b981 !important;
+}
+
+/* Locality filter buttons inside mobile map settings */
+body.dark-mode .text-slate-600.hover\:bg-slate-200 {
+    color: #94a3b8 !important;
+}
+body.dark-mode .hover\:bg-slate-200:hover {
+    background: rgba(255, 255, 255, 0.08) !important;
+}
+
+/* Light mode explicit surface definitions */
+:root .rounded-2xl,
+:root .rounded-t-3xl {
+    transition: background 0.3s ease, border-color 0.3s ease;
 }

@@ -69,7 +69,7 @@ export function getConstructionRiskImpact(lat, lng, constructionZones = [], enab
     return Math.min(2.5, totalImpact);
 }
 
-export function calculateRisk(segment, constructionZones = [], showConstruction = true, citizenReports = [], bikeSegments = {}) {
+export function calculateRisk(segment, constructionZones = [], showConstruction = true, citizenReports = [], bikeSegments = {}, trafficLights = []) {
     const baseValue = 5.0;
 
     // A. Historic Crime Baseline (SIEDCO)
@@ -110,8 +110,21 @@ export function calculateRisk(segment, constructionZones = [], showConstruction 
     // I. Citizen Reports
     const citizenRisk = calcularRiesgoCiudadano(segment.id, citizenReports, bikeSegments);
 
+    // J. Traffic Lights dynamic impact
+    let shapTrafficLight = 0.0;
+    if (trafficLights && trafficLights.length > 0 && startCoord) {
+        const nearbyLight = trafficLights.find(light => {
+            const distDeg = Math.sqrt(Math.pow(startCoord[0] - light.coordinates[0], 2) + Math.pow(startCoord[1] - light.coordinates[1], 2));
+            return (distDeg * 111000) <= 30;
+        });
+        if (nearbyLight) {
+            if (nearbyLight.state === 'verde') shapTrafficLight = -0.6;
+            else if (nearbyLight.state === 'rojo') shapTrafficLight = 0.5;
+        }
+    }
+
     // Total risk score
-    let totalScore = baseValue + shapCrime + shapWeather + shapLightingTech + shapLightingPower + shapVisibility + shapGuardians + shapConstruction + shapTrafficJams + shapAccidents + citizenRisk;
+    let totalScore = baseValue + shapCrime + shapWeather + shapLightingTech + shapLightingPower + shapVisibility + shapGuardians + shapConstruction + shapTrafficJams + shapAccidents + citizenRisk + shapTrafficLight;
     totalScore = Math.max(0.5, Math.min(9.5, totalScore));
 
     let level = 'Bajo';
@@ -131,7 +144,8 @@ export function calculateRisk(segment, constructionZones = [], showConstruction 
             'Frente Obra (IDU)': shapConstruction,
             'Trancones (Waze)': shapTrafficJams,
             'Accidentes (CRUE)': shapAccidents,
-            'Riesgo Ciudadano': citizenRisk
+            'Riesgo Ciudadano': citizenRisk,
+            'Semáforo Dinámico': shapTrafficLight
         }
     };
 }
@@ -157,7 +171,7 @@ export function findNearestSegment(latlng, bikeSegments) {
 }
 
 // Evaluate coordinate risk using current simulation state
-export function evaluateCoordinateRisk(lat, lng, bikeSegments, simulationState, constructionZones = [], showConstruction = true, citizenReports = []) {
+export function evaluateCoordinateRisk(lat, lng, bikeSegments, simulationState, constructionZones = [], showConstruction = true, citizenReports = [], trafficLights = []) {
     const nearest = findNearestSegment({ lat, lng }, bikeSegments);
     const baseValue = 5.0;
 
@@ -190,7 +204,20 @@ export function evaluateCoordinateRisk(lat, lng, bikeSegments, simulationState, 
     // Citizen Reports
     const citizenRisk = nearest ? calcularRiesgoCiudadano(nearest.id, citizenReports, bikeSegments) : 0;
 
-    let score = baseValue + shapCrime + shapWeather + shapLightingTech + shapLightingPower + shapVisibility + (shapCai + shapRuta) + shapConstruction + shapTrafficJams + shapAccidents + citizenRisk;
+    // Traffic Lights dynamic impact
+    let shapTrafficLight = 0.0;
+    if (trafficLights && trafficLights.length > 0) {
+        const nearbyLight = trafficLights.find(light => {
+            const distDeg = Math.sqrt(Math.pow(lat - light.coordinates[0], 2) + Math.pow(lng - light.coordinates[1], 2));
+            return (distDeg * 111000) <= 30;
+        });
+        if (nearbyLight) {
+            if (nearbyLight.state === 'verde') shapTrafficLight = -0.6;
+            else if (nearbyLight.state === 'rojo') shapTrafficLight = 0.5;
+        }
+    }
+
+    let score = baseValue + shapCrime + shapWeather + shapLightingTech + shapLightingPower + shapVisibility + (shapCai + shapRuta) + shapConstruction + shapTrafficJams + shapAccidents + citizenRisk + shapTrafficLight;
     score = Math.max(0.5, Math.min(9.5, score));
 
     let level = 'Bajo';
@@ -201,7 +228,7 @@ export function evaluateCoordinateRisk(lat, lng, bikeSegments, simulationState, 
 }
 
 // Calculate the average risk and max risk levels across route coordinates
-export function calculateRouteAverageRisk(coords, bikeSegments, simulationState, constructionZones = [], showConstruction = true, citizenReports = []) {
+export function calculateRouteAverageRisk(coords, bikeSegments, simulationState, constructionZones = [], showConstruction = true, citizenReports = [], trafficLights = []) {
     let totalScore = 0;
     let maxScore = 0;
     const step = Math.max(1, Math.floor(coords.length / 20)); // Sample coordinates
@@ -209,7 +236,7 @@ export function calculateRouteAverageRisk(coords, bikeSegments, simulationState,
     
     for (let i = 0; i < coords.length; i += step) {
         const pt = coords[i];
-        const risk = evaluateCoordinateRisk(pt[0], pt[1], bikeSegments, simulationState, constructionZones, showConstruction, citizenReports);
+        const risk = evaluateCoordinateRisk(pt[0], pt[1], bikeSegments, simulationState, constructionZones, showConstruction, citizenReports, trafficLights);
         const scoreNum = parseFloat(risk.score);
         totalScore += scoreNum;
         if (scoreNum > maxScore) {
@@ -227,7 +254,7 @@ export function calculateRouteAverageRisk(coords, bikeSegments, simulationState,
 }
 
 // Calculate the dynamic routing cost based on the formula: Costo_i = Distancia_i * (1 + Riesgo_Base_i + Riesgo_Ciudadano_i)
-export function calculateRouteCost(coords, bikeSegments, simulationState, constructionZones = [], showConstruction = true, citizenReports = []) {
+export function calculateRouteCost(coords, bikeSegments, simulationState, constructionZones = [], showConstruction = true, citizenReports = [], trafficLights = []) {
     if (!coords || coords.length < 2) return 0;
     
     let totalCost = 0;
@@ -244,7 +271,7 @@ export function calculateRouteCost(coords, bikeSegments, simulationState, constr
         const midLng = (pt1[1] + pt2[1]) / 2;
         
         // Evaluate risk at midpoint
-        const risk = evaluateCoordinateRisk(midLat, midLng, bikeSegments, simulationState, constructionZones, showConstruction, citizenReports);
+        const risk = evaluateCoordinateRisk(midLat, midLng, bikeSegments, simulationState, constructionZones, showConstruction, citizenReports, trafficLights);
         const riskScore = parseFloat(risk.score);
         
         // Costo_i = Distancia_i * (1 + Riesgo_i)

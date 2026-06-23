@@ -6,11 +6,13 @@ import ResultsPanel from './components/organisms/ResultsPanel';
 import StatsPanel from './components/organisms/StatsPanel';
 import MapComponent from './components/organisms/MapComponent';
 import CitizenSciencePanel from './components/organisms/CitizenSciencePanel';
+import TrafficLightsPanel from './components/organisms/TrafficLightsPanel';
 import FormField from './components/molecules/FormField';
 
 import { bikeSegments as initialSegments, localitiesMap } from './data/bikeSegments';
 import { constructionZones } from './data/constructionZones';
 import { trafficJams } from './data/trafficJams';
+import { trafficLights as initialTrafficLights } from './data/trafficLights';
 import { 
     calculateRisk, 
     getRecommendations, 
@@ -19,7 +21,8 @@ import {
     calculateRouteAverageRisk,
     detectTrafficJamsOnRoute,
     calculateRouteCost,
-    calcularRiesgoCiudadano
+    calcularRiesgoCiudadano,
+    evaluateCoordinateRisk
 } from './utils/riskCalculator';
 
 export default function App() {
@@ -52,8 +55,34 @@ export default function App() {
         accidents: true,
         robberies: true,
         trafficJams: true,
-        citizenReports: true
+        citizenReports: true,
+        trafficLights: true
     });
+
+    // Sidebar active tab (desktop left panel content)
+    const [activeTab, setActiveTab] = useState('routes');
+
+    // Traffic Lights State
+    const [trafficLights, setTrafficLights] = useState(initialTrafficLights);
+    const [autoCycleActive, setAutoCycleActive] = useState(true);
+    const [greenWaveActive, setGreenWaveActive] = useState(false);
+
+    // 3D Navigation Simulator State
+    const [isNavigating, setIsNavigating] = useState(false);
+    const [cyclistCoords, setCyclistCoords] = useState(null);
+    const [cyclistIndex, setCyclistIndex] = useState(0);
+    const [navSpeedMultiplier, setNavSpeedMultiplier] = useState(1);
+    const [navStatus, setNavStatus] = useState('stopped');
+    const [speedKmh, setSpeedKmh] = useState(0);
+    const [hudRecommendation, setHudRecommendation] = useState('Haz clic en Iniciar para comenzar la navegación simulada.');
+    const [nextTrafficLight, setNextTrafficLight] = useState(null);
+
+    // Mobile popover states and bottom sheet active tab
+    const [mobileLayersOpen, setMobileLayersOpen] = useState(false);
+    const [mobileLocalityOpen, setMobileLocalityOpen] = useState(false);
+    const [mobileActiveTab, setMobileActiveTab] = useState('results');
+    const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false);
+    const [darkMode, setDarkMode] = useState(false);
 
     // 3b. Citizen Science and Reports State
     const [citizenReports, setCitizenReports] = useState([]);
@@ -91,6 +120,177 @@ export default function App() {
         window.addEventListener('resize', handleResize);
         return () => window.removeEventListener('resize', handleResize);
     }, []);
+
+    // Sync body class list for dark mode
+    useEffect(() => {
+        if (darkMode) {
+            document.body.classList.add('dark-mode');
+        } else {
+            document.body.classList.remove('dark-mode');
+        }
+    }, [darkMode]);
+
+    // A. Auto-cycle Traffic Lights
+    useEffect(() => {
+        if (!autoCycleActive) return;
+        
+        const interval = setInterval(() => {
+            setTrafficLights(prev => prev.map(light => {
+                // If green wave is active for this light, keep it green!
+                if (greenWaveActive && activeRouteId) {
+                    const activeRoute = generatedRoutes.find(r => r.id === activeRouteId);
+                    if (activeRoute) {
+                        const onRoute = activeRoute.coordinates.some(pt => {
+                            const distDeg = Math.sqrt(
+                                Math.pow(pt[0] - light.coordinates[0], 2) + 
+                                Math.pow(pt[1] - light.coordinates[1], 2)
+                            );
+                            return (distDeg * 111000) <= 40;
+                        });
+                        if (onRoute) {
+                            return { ...light, state: 'verde' };
+                        }
+                    }
+                }
+
+                // Cycle: verde (5s) -> amarillo (5s) -> rojo (5s) -> verde
+                let nextState = light.state;
+                if (light.state === 'verde') nextState = 'amarillo';
+                else if (light.state === 'amarillo') nextState = 'rojo';
+                else nextState = 'verde';
+                
+                return { ...light, state: nextState };
+            }));
+        }, 5000);
+
+        return () => clearInterval(interval);
+    }, [autoCycleActive, greenWaveActive, activeRouteId, generatedRoutes]);
+
+    // B. Force Green Wave handler
+    const handleForceGreenWave = () => {
+        const activeRoute = generatedRoutes.find(r => r.id === activeRouteId);
+        if (!activeRoute) return;
+        
+        setGreenWaveActive(true);
+        setTrafficLights(prev => prev.map(light => {
+            const onRoute = activeRoute.coordinates.some(pt => {
+                const distDeg = Math.sqrt(
+                    Math.pow(pt[0] - light.coordinates[0], 2) + 
+                    Math.pow(pt[1] - light.coordinates[1], 2)
+                );
+                return (distDeg * 111000) <= 40;
+            });
+            if (onRoute) {
+                return { ...light, state: 'verde' };
+            }
+            return light;
+        }));
+
+        setTimeout(() => {
+            setGreenWaveActive(false);
+        }, 15000);
+    };
+
+    // C. Manual traffic light state override
+    const handleToggleLightState = (id, newState) => {
+        setTrafficLights(prev => prev.map(light => {
+            if (light.id === id) {
+                return { ...light, state: newState };
+            }
+            return light;
+        }));
+    };
+
+    // D. 3D First Person Navigation Simulation loop
+    useEffect(() => {
+        const activeRoute = generatedRoutes.find(r => r.id === activeRouteId);
+        if (navStatus !== 'running' || !activeRoute) return;
+
+        let waitTicks = 0;
+
+        const interval = setInterval(() => {
+            const coords = activeRoute.coordinates;
+            if (cyclistIndex >= coords.length - 1) {
+                // Simulation ended successfully
+                setNavStatus('stopped');
+                setIsNavigating(false);
+                setCyclistCoords(null);
+                setCyclistIndex(0);
+                setSpeedKmh(0);
+                setNextTrafficLight(null);
+                alert("¡Has llegado a tu destino de forma segura!");
+                return;
+            }
+
+            const currentPt = coords[cyclistIndex];
+
+            // Detect next traffic light
+            const nearbyLight = trafficLights.find(light => {
+                const distDeg = Math.sqrt(
+                    Math.pow(currentPt[0] - light.coordinates[0], 2) + 
+                    Math.pow(currentPt[1] - light.coordinates[1], 2)
+                );
+                return (distDeg * 111000) <= 40;
+            });
+
+            if (nearbyLight) {
+                setNextTrafficLight(nearbyLight);
+                if (nearbyLight.state === 'rojo') {
+                    setSpeedKmh(0);
+                    setHudRecommendation('🚦 Semáforo en ROJO. Detente y espera el cambio a verde.');
+                    waitTicks++;
+                    if (waitTicks < 4) {
+                        return; // pause cyclist progression
+                    }
+                }
+            } else {
+                setNextTrafficLight(null);
+            }
+
+            waitTicks = 0;
+
+            const nextIdx = cyclistIndex + 1;
+            setCyclistIndex(nextIdx);
+            setCyclistCoords(coords[nextIdx]);
+
+            // Simulate speed
+            const baseSpeed = 18;
+            const variance = Math.sin(nextIdx) * 3;
+            setSpeedKmh(Math.round(baseSpeed + variance));
+
+            // Dynamic recommendation based on location risk and objects
+            const riskInfo = evaluateCoordinateRisk(
+                coords[nextIdx][0], 
+                coords[nextIdx][1], 
+                segments, 
+                simulationState, 
+                constructionZones, 
+                simulationState.showConstruction,
+                citizenReports
+            );
+
+            // Check proximity to construction zones
+            const hasConst = constructionZones.some(zone => {
+                const distDeg = Math.sqrt(Math.pow(coords[nextIdx][0] - zone.lat, 2) + Math.pow(coords[nextIdx][1] - zone.lng, 2));
+                return (distDeg * 111000) <= zone.radius;
+            });
+
+            if (hasConst) {
+                setHudRecommendation('🚧 Obras viales del IDU adelante. Disminuye la velocidad.');
+            } else if (riskInfo.level === 'Alto') {
+                setHudRecommendation('⚠️ Sector con alto índice de hurto. Evita detenerte y mantente en alerta.');
+            } else if (simulationState.weather === 'lluvia') {
+                setHudRecommendation('🌧️ Calzada resbaladiza por lluvias. Conduce con precaución.');
+            } else if (nearbyLight && nearbyLight.state === 'verde') {
+                setHudRecommendation('🟢 Cruce semaforizado en VERDE. Paso libre.');
+            } else {
+                setHudRecommendation('🚴 Calzada despejada. Sigue el rumbo por la ciclorruta.');
+            }
+
+        }, 400 / navSpeedMultiplier);
+
+        return () => clearInterval(interval);
+    }, [navStatus, cyclistIndex, activeRouteId, navSpeedMultiplier, trafficLights, segments, simulationState, constructionZones, citizenReports]);
 
     // 5. Update default origin when localidad changes
     useEffect(() => {
@@ -219,6 +419,10 @@ export default function App() {
             setOriginInput(formattedCoord);
         } else {
             setDestInput(formattedCoord);
+        }
+
+        if (isMobile) {
+            setIsMobileSearchOpen(true);
         }
     };
 
@@ -597,6 +801,7 @@ export default function App() {
 
     const mapComponent = (
         <MapComponent
+            darkMode={darkMode}
             localidad={localidad}
             onLocalidadChange={handleLocalidadChange}
             selectedSegmentId={selectedSegmentId}
@@ -617,6 +822,11 @@ export default function App() {
             citizenReports={citizenReports}
             onUpvoteReport={handleUpvoteReport}
             zoomToCoords={zoomToCoords}
+            trafficLights={trafficLights}
+            isNavigating={isNavigating}
+            cyclistCoords={cyclistCoords}
+            cyclistIndex={cyclistIndex}
+            activeRoute={activeRoute}
         />
     );
 
@@ -690,6 +900,191 @@ export default function App() {
         />
     );
 
+    const trafficLightsPanelComponent = (
+        <TrafficLightsPanel 
+            trafficLights={trafficLights}
+            localidad={localidad}
+            activeRoute={activeRoute}
+            onToggleAutoCycle={() => setAutoCycleActive(!autoCycleActive)}
+            autoCycleActive={autoCycleActive}
+            onForceGreenWave={handleForceGreenWave}
+            greenWaveActive={greenWaveActive}
+            onToggleLightState={handleToggleLightState}
+        />
+    );
+
+    const navigationControlsComponent = (
+        <div className="navigation-controls-card animate-fade-in">
+            <h3>
+                <i className="fa-solid fa-bicycle text-accent"></i> Simulación Navegación 3D
+            </h3>
+            <p className="navigation-desc">
+                Recorre la ruta en primera persona. El mapa se inclinará y girará según el rumbo del trayecto.
+            </p>
+
+            {!activeRoute ? (
+                <div className="nav-warning-box">
+                    <i className="fa-solid fa-triangle-exclamation"></i> Para iniciar la simulación 3D, primero debes calcular una ruta en la pestaña de <strong>Rutas</strong>.
+                </div>
+            ) : (
+                <div className="nav-active-controls" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                    <div className="nav-status-banner">
+                        <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>Ruta Activa:</span>
+                        <strong style={{ fontSize: '0.85rem', color: 'var(--text-primary)' }}>{activeRoute.name} ({activeRoute.distanceKm} km)</strong>
+                        <span style={{ fontSize: '0.65rem', color: 'var(--text-secondary)' }}>
+                            Progreso: {Math.round((cyclistIndex / (activeRoute.coordinates.length - 1)) * 100)}% ({cyclistIndex} / {activeRoute.coordinates.length - 1} pts)
+                        </span>
+                    </div>
+
+                    <div className="nav-buttons-row" style={{ display: 'flex', gap: '0.5rem' }}>
+                        {navStatus === 'stopped' && (
+                            <button
+                                className="btn-flat btn-flat-primary"
+                                onClick={() => {
+                                    setIsNavigating(true);
+                                    setNavStatus('running');
+                                    setCyclistIndex(0);
+                                    setCyclistCoords(activeRoute.coordinates[0]);
+                                }}
+                                style={{ flex: 1 }}
+                            >
+                                <i className="fa-solid fa-play"></i> Iniciar
+                            </button>
+                        )}
+
+                        {navStatus === 'running' && (
+                            <button
+                                className="btn-flat btn-flat-warning"
+                                onClick={() => setNavStatus('paused')}
+                                style={{ flex: 1 }}
+                            >
+                                <i className="fa-solid fa-pause"></i> Pausar
+                            </button>
+                        )}
+
+                        {navStatus === 'paused' && (
+                            <button
+                                className="btn-flat btn-flat-primary"
+                                onClick={() => setNavStatus('running')}
+                                style={{ flex: 1 }}
+                            >
+                                <i className="fa-solid fa-play"></i> Continuar
+                            </button>
+                        )}
+
+                        {navStatus !== 'stopped' && (
+                            <button
+                                className="btn-flat btn-flat-danger"
+                                onClick={() => {
+                                    setNavStatus('stopped');
+                                    setIsNavigating(false);
+                                    setCyclistCoords(null);
+                                    setCyclistIndex(0);
+                                    setSpeedKmh(0);
+                                    setNextTrafficLight(null);
+                                }}
+                                style={{ flex: 1 }}
+                            >
+                                <i className="fa-solid fa-square"></i> Detener
+                            </button>
+                        )}
+                    </div>
+
+                    <div className="speed-multiplier-control">
+                        <label style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '0.4rem' }}>
+                            Velocidad de Simulación:
+                        </label>
+                        <div className="speed-multiplier-track">
+                            {[1, 2, 5].map(mult => (
+                                <button
+                                    key={mult}
+                                    onClick={() => setNavSpeedMultiplier(mult)}
+                                    style={{
+                                        flex: 1,
+                                        padding: '0.25rem',
+                                        borderRadius: '6px',
+                                        background: navSpeedMultiplier === mult ? 'var(--accent-color, #6366f1)' : 'transparent',
+                                        color: navSpeedMultiplier === mult ? '#fff' : 'var(--text-secondary)',
+                                        border: 'none',
+                                        fontSize: '0.7rem',
+                                        fontWeight: '700',
+                                        cursor: 'pointer'
+                                    }}
+                                >
+                                    {mult}x
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+
+    const cockpitHUD = isNavigating && activeRoute && (
+        <div className="cockpit-hud-overlay animate-slide-up">
+            <div className="hud-header">
+                <div className="hud-stat-box">
+                    <span className="hud-stat-label">VELOCIDAD</span>
+                    <span className="hud-stat-value">{speedKmh} <span className="hud-unit">km/h</span></span>
+                </div>
+                
+                <div className="hud-stat-box">
+                    <span className="hud-stat-label">DISTANCIA</span>
+                    <span className="hud-stat-value">
+                        {activeRoute.distanceKm} <span className="hud-unit">km</span>
+                    </span>
+                </div>
+
+                <div className="hud-stat-box">
+                    <span className="hud-stat-label">INTERSECCIÓN</span>
+                    {nextTrafficLight ? (
+                        <span className="hud-stat-value" style={{ 
+                            color: nextTrafficLight.state === 'verde' ? '#10b981' : (nextTrafficLight.state === 'amarillo' ? '#eab308' : '#ef4444'),
+                            textShadow: nextTrafficLight.state === 'verde' ? '0 0 10px rgba(16,185,129,0.5)' : (nextTrafficLight.state === 'amarillo' ? '0 0 10px rgba(234,179,8,0.5)' : '0 0 10px rgba(239,68,68,0.5)')
+                        }}>
+                            <i className="fa-solid fa-traffic-light"></i> {nextTrafficLight.state.toUpperCase()}
+                        </span>
+                    ) : (
+                        <span className="hud-stat-value text-muted">-</span>
+                    )}
+                </div>
+            </div>
+
+            <div className="hud-recommendation-banner">
+                <p className="hud-rec-text">{hudRecommendation}</p>
+            </div>
+
+            <div className="hud-handlebar-cockpit">
+                <div className="handlebar-left"></div>
+                <div className="handlebar-center">
+                    <div className="bike-computer">
+                        <div className="computer-screen">
+                            <span className="battery-icon"><i className="fa-solid fa-battery-three-quarters"></i> 87%</span>
+                            <span className="time-display">{new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                        </div>
+                    </div>
+                </div>
+                <div className="handlebar-right"></div>
+            </div>
+
+            <button 
+                className="hud-exit-btn"
+                onClick={() => {
+                    setNavStatus('stopped');
+                    setIsNavigating(false);
+                    setCyclistCoords(null);
+                    setCyclistIndex(0);
+                    setSpeedKmh(0);
+                    setNextTrafficLight(null);
+                }}
+                title="Salir de la navegación"
+            >
+                <i className="fa-solid fa-xmark"></i> Salir
+            </button>
+        </div>
+    );
+
     return (
         <div className={`relative w-screen h-screen overflow-hidden ${viewMode === 'tech' ? 'scientific-view' : 'citizen-view'}`}>
             
@@ -700,283 +1095,270 @@ export default function App() {
 
             {/* ==================== MOBILE LAYOUT (h < md) ==================== */}
 
-            {/* 2. Floating Top Planner Card (Google Maps Search Style) */}
-            <div className="absolute top-4 left-4 right-4 z-10 md:hidden bg-white/95 backdrop-blur-md border border-slate-200/80 p-5 rounded-2xl shadow-lg flex flex-col gap-3.5 text-slate-800 max-w-[calc(100vw-2rem)] mx-auto">
-                <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                        <img src={`${import.meta.env.BASE_URL}Logo.svg`} alt="Ruta Clara Logo" className="w-8 h-8" />
-                        <h1 className="font-extrabold text-base text-emerald-700">Ruta Clara</h1>
-                    </div>
-                    {/* Action buttons next to each other */}
-                    <div className="flex gap-2">
-                        <button 
-                            onClick={() => {
-                                setActiveModalTab('simulator');
-                                setShowScientificMenu(true);
-                            }} 
-                            className="w-10 h-10 flex items-center justify-center rounded-xl transition-all text-slate-700 hover:text-slate-900 hover:bg-slate-100/60 cursor-pointer"
-                            style={{ border: 'none', background: 'transparent', boxShadow: 'none' }}
-                            title="Simulador predictivo"
-                            aria-label="Abrir Simulador"
-                        >
-                            <i className="fa-solid fa-sliders text-md"></i>
-                        </button>
-                        <button 
-                            onClick={() => {
-                                setActiveModalTab('settings');
-                                setShowScientificMenu(true);
-                            }} 
-                            className="w-10 h-10 flex items-center justify-center rounded-xl transition-all text-slate-700 hover:text-slate-900 hover:bg-slate-100/60 cursor-pointer"
-                            style={{ border: 'none', background: 'transparent', boxShadow: 'none' }}
-                            title="Ajustes de mapa y localidad"
-                            aria-label="Abrir Ajustes"
-                        >
-                            <i className="fa-solid fa-gear text-md"></i>
-                        </button>
-                    </div>
-                </div>
-                
-                <div className="flex flex-col gap-2">
-                    <FormField
-                        value={originInput}
-                        onChange={setOriginInput}
-                        placeholder="Origen: clic mapa o buscar..."
-                        iconClass="fa-solid fa-circle-play text-emerald-600"
-                        onSelectOnMap={() => setSelectingLocationMode('origin')}
-                        isSelecting={selectingLocationMode === 'origin'}
-                        title="Fijar origen en el mapa"
-                        onSelectLocation={handleSelectOriginLocation}
-                        showGpsButton={true}
-                    />
-                    <FormField
-                        value={destInput}
-                        onChange={setDestInput}
-                        placeholder="Destino: clic mapa o buscar..."
-                        iconClass="fa-solid fa-location-dot text-red-500"
-                        onSelectOnMap={() => setSelectingLocationMode('destination')}
-                        isSelecting={selectingLocationMode === 'destination'}
-                        title="Fijar destino en el mapa"
-                        onSelectLocation={handleSelectDestLocation}
-                        showGpsButton={false}
-                    />
-                </div>
-
-                <div className="flex gap-2">
-                    <button
-                        onClick={handleCalculateRoute}
-                        disabled={isLoading}
-                        className="flex-1 py-2.5 px-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-sm transition-all flex items-center justify-center gap-2 shadow-sm disabled:opacity-60 cursor-pointer"
-                    >
-                        {isLoading ? (
-                            <>
-                                <i className="fa-solid fa-spinner fa-spin"></i> Procesando...
-                            </>
-                        ) : (
-                            <>
-                                <i className="fa-solid fa-compass"></i> Calcular Ruta
-                            </>
-                        )}
-                    </button>
-                    {generatedRoutes.length > 0 && (
-                        <button
-                            onClick={handleClearRoute}
-                            className="py-2.5 px-4 bg-red-50 hover:bg-red-100 border border-red-200/80 text-red-650 rounded-xl font-bold text-sm transition-all flex items-center justify-center gap-2 cursor-pointer"
-                        >
-                            <i className="fa-solid fa-trash-can"></i> Limpiar
-                        </button>
-                    )}
-                </div>
-            </div>
-
-            {/* 3. Mobile Scientific / Simulation Menu (Modal Panel with Tabs) */}
-            {showScientificMenu && (
-                <div className="fixed inset-0 z-50 bg-white/98 backdrop-blur-md overflow-y-auto p-6 md:hidden text-slate-800 flex flex-col gap-5">
-                    <div className="flex items-center justify-between border-b border-slate-200 pb-3">
-                        <h2 className="text-lg font-bold flex items-center gap-2 text-slate-800">
-                            <i className="fa-solid fa-circle-info text-emerald-600"></i> Panel de Configuración
-                        </h2>
-                        <button 
-                            onClick={() => setShowScientificMenu(false)}
-                            className="w-9 h-9 flex items-center justify-center bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-xl transition-all text-slate-700 cursor-pointer"
-                            title="Cerrar"
-                            aria-label="Cerrar Configuración"
-                        >
-                            <i className="fa-solid fa-xmark text-md"></i>
-                        </button>
-                    </div>
-
-                    {/* Tab Navigation Switcher inside Modal */}
-                    <div className="grid grid-cols-2 gap-2 bg-slate-100 p-1 border border-slate-200/85 rounded-xl">
-                        <button
-                            onClick={() => setActiveModalTab('settings')}
-                            className={`py-2 px-3 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
-                                activeModalTab === 'settings' 
-                                    ? 'bg-emerald-600 text-white shadow-sm' 
-                                    : 'text-slate-650 hover:bg-slate-200/60 hover:text-slate-900'
-                            }`}
-                        >
-                            <i className="fa-solid fa-gear"></i> Ajustes de Mapa
-                        </button>
-                        <button
-                            onClick={() => setActiveModalTab('simulator')}
-                            className={`py-2 px-3 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
-                                activeModalTab === 'simulator' 
-                                    ? 'bg-emerald-600 text-white shadow-sm' 
-                                    : 'text-slate-655 hover:bg-slate-200/60 hover:text-slate-900'
-                            }`}
-                        >
-                            <i className="fa-solid fa-sliders"></i> Simulador y Reportes
-                        </button>
-                    </div>
-
-                    {/* Tab 1: Settings */}
-                    {activeModalTab === 'settings' && (
-                        <div className="flex flex-col gap-4 animate-fade-in">
-                            {/* Localidad Switcher */}
-                            <div className="flex flex-col gap-2">
-                                <label className="text-xs font-bold text-slate-600 uppercase tracking-wider">Localidad Activa</label>
-                                <div className="grid grid-cols-2 gap-2 bg-slate-100 p-1 border border-slate-200/80 rounded-xl">
-                                    {Object.keys(localitiesMap).map((key) => (
-                                        <button
-                                            key={key}
-                                            onClick={() => {
-                                                handleLocalidadChange(key);
-                                                setShowScientificMenu(false); // Close menu to show map flying
-                                            }}
-                                            className={`py-2 px-3 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                                                localidad === key 
-                                                    ? 'bg-emerald-650 text-white shadow-sm' 
-                                                    : 'text-slate-600 hover:text-slate-800'
-                                            }`}
-                                        >
-                                            {localitiesMap[key].name}
-                                        </button>
-                                    ))}
-                                </div>
-                            </div>
-
-                            {/* View Mode Switcher */}
-                            <div className="flex flex-col gap-2">
-                                <label className="text-xs font-bold text-slate-600 uppercase tracking-wider">Perfil de Vista</label>
-                                <div className="grid grid-cols-2 gap-2 bg-slate-100 p-1 border border-slate-200/80 rounded-xl">
-                                    <button
-                                        onClick={() => setViewMode('citizen')}
-                                        className={`py-2 px-3 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                                            viewMode === 'citizen' 
-                                                ? 'bg-emerald-650 text-white shadow-sm' 
-                                                : 'text-slate-600 hover:text-slate-800'
-                                        }`}
-                                    >
-                                        Ciudadano
-                                    </button>
-                                    <button
-                                        onClick={() => setViewMode('tech')}
-                                        className={`py-2 px-3 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                                            viewMode === 'tech' 
-                                                ? 'bg-emerald-650 text-white shadow-sm' 
-                                                : 'text-slate-600 hover:text-slate-800'
-                                        }`}
-                                    >
-                                        Científico
-                                    </button>
-                                </div>
-                            </div>
-
-                            <div className="border-t border-slate-200 my-1"></div>
-
-                            {/* Map Layers Checklist */}
-                            <div className="flex flex-col gap-2">
-                                <label className="text-xs font-bold text-slate-600 uppercase tracking-wider flex items-center gap-1.5">
-                                    <i className="fa-solid fa-layer-group text-emerald-600"></i> Capas del Mapa
-                                </label>
-                                <div className="grid grid-cols-1 gap-2 bg-slate-50 p-3 rounded-xl border border-slate-200">
-                                    <div className="flex justify-between items-center py-1 border-b border-slate-200/50">
-                                        <span className="text-xs text-slate-700 font-medium"><i className="fa-solid fa-map text-slate-400 mr-2"></i>Límites de Localidades</span>
-                                        <input
-                                            type="checkbox"
-                                            checked={mapLayers.localities}
-                                            onChange={(e) => setMapLayers(prev => ({ ...prev, localities: e.target.checked }))}
-                                            className="w-4 h-4 accent-emerald-600"
-                                        />
-                                    </div>
-                                    <div className="flex justify-between items-center py-1 border-b border-slate-200/50">
-                                        <span className="text-xs text-slate-700 font-medium"><i className="fa-solid fa-shield-halved text-blue-500 mr-2"></i>CAIs de Policía</span>
-                                        <input
-                                            type="checkbox"
-                                            checked={mapLayers.cais}
-                                            onChange={(e) => setMapLayers(prev => ({ ...prev, cais: e.target.checked }))}
-                                            className="w-4 h-4 accent-emerald-600"
-                                        />
-                                    </div>
-                                    <div className="flex justify-between items-center py-1 border-b border-slate-200/50">
-                                        <span className="text-xs text-slate-700 font-medium"><i className="fa-solid fa-person-digging text-orange-500 mr-2"></i>Zonas de Obra (IDU)</span>
-                                        <input
-                                            type="checkbox"
-                                            checked={mapLayers.construction}
-                                            onChange={(e) => setMapLayers(prev => ({ ...prev, construction: e.target.checked }))}
-                                            className="w-4 h-4 accent-emerald-600"
-                                        />
-                                    </div>
-                                    <div className="flex justify-between items-center py-1 border-b border-slate-200/50">
-                                        <span className="text-xs text-slate-700 font-medium"><i className="fa-solid fa-car-burst text-yellow-600 mr-2"></i>Accidentes Recientes</span>
-                                        <input
-                                            type="checkbox"
-                                            checked={mapLayers.accidents}
-                                            onChange={(e) => setMapLayers(prev => ({ ...prev, accidents: e.target.checked }))}
-                                            className="w-4 h-4 accent-emerald-600"
-                                        />
-                                    </div>
-                                    <div className="flex justify-between items-center py-1 border-b border-slate-200/50">
-                                        <span className="text-xs text-slate-700 font-medium"><i className="fa-solid fa-mask text-red-500 mr-2"></i>Robos Últimas 24h</span>
-                                        <input
-                                            type="checkbox"
-                                            checked={mapLayers.robberies}
-                                            onChange={(e) => setMapLayers(prev => ({ ...prev, robberies: e.target.checked }))}
-                                            className="w-4 h-4 accent-emerald-600"
-                                        />
-                                    </div>
-                                    <div className="flex justify-between items-center py-1 border-b border-slate-200/50">
-                                        <span className="text-xs text-slate-700 font-medium"><i className="fa-solid fa-car text-orange-500 mr-2"></i>Trancones en Tiempo Real</span>
-                                        <input
-                                            type="checkbox"
-                                            checked={mapLayers.trafficJams}
-                                            onChange={(e) => setMapLayers(prev => ({ ...prev, trafficJams: e.target.checked }))}
-                                            className="w-4 h-4 accent-emerald-600"
-                                        />
-                                    </div>
-                                    <div className="flex justify-between items-center py-1">
-                                        <span className="text-xs text-slate-700 font-medium"><i className="fa-solid fa-people-group text-emerald-600 mr-2"></i>Reportes Ciudadanos</span>
-                                        <input
-                                            type="checkbox"
-                                            checked={mapLayers.citizenReports}
-                                            onChange={(e) => setMapLayers(prev => ({ ...prev, citizenReports: e.target.checked }))}
-                                            className="w-4 h-4 accent-emerald-600"
-                                        />
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    )}
-
-                    {/* Tab 2: Simulator & Reports */}
-                    {activeModalTab === 'simulator' && (
-                        <div className="flex flex-col gap-4 animate-fade-in">
-                            {/* Simulator Sliders */}
-                            {simulatorPanelComponent}
-                            <div className="border-t border-slate-200 my-1"></div>
-                            {/* Citizen Science Panel */}
-                            {citizenSciencePanelComponent}
-                        </div>
-                    )}
+            {/* 2. Floating Top Planner Card - hidden during navigation */}
+            {isMobile && !isNavigating && !generatedRoutes.length && (
+                <div 
+                    onClick={() => setIsMobileSearchOpen(true)}
+                    className="absolute top-4 left-4 right-4 z-10 backdrop-blur-md p-3.5 rounded-2xl shadow-lg flex items-center gap-3 max-w-[calc(100vw-2rem)] mx-auto cursor-pointer transition-all"
+                    style={{
+                        background: 'var(--bg-surface)',
+                        border: '1px solid var(--border-surface)',
+                        color: 'var(--text-on-surface)'
+                    }}
+                >
+                    <i className="fa-solid fa-magnifying-glass text-emerald-600 text-base"></i>
+                    <span className="text-xs font-semibold" style={{ color: 'var(--text-secondary)' }}>¿A dónde quieres ir hoy? (Planificar ruta)</span>
                 </div>
             )}
 
-            {/* 4. Mobile Bottom Sheet for Results */}
-            {(generatedRoutes.length > 0 || selectedSegmentId) && (
+            {isMobile && !isNavigating && generatedRoutes.length > 0 && (
+                <div className="absolute top-4 left-4 right-4 z-10 bg-white/95 backdrop-blur-md border border-slate-200/80 p-3 rounded-2xl shadow-lg flex items-center justify-between text-slate-800 max-w-[calc(100vw-2rem)] mx-auto">
+                    <div className="flex items-center gap-2 overflow-hidden mr-2">
+                        <button 
+                            onClick={handleClearRoute}
+                            className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-600 cursor-pointer border-none"
+                        >
+                            <i className="fa-solid fa-arrow-left text-xs"></i>
+                        </button>
+                        <div className="flex flex-col overflow-hidden">
+                            <span className="text-[10px] text-slate-455 font-bold uppercase tracking-wider">Ruta Activa</span>
+                            <span className="text-xs font-bold text-slate-800 truncate">
+                                {originInput.split(',')[0]} ➔ {destInput.split(',')[0]}
+                            </span>
+                        </div>
+                    </div>
+                    <button
+                        onClick={() => setIsMobileSearchOpen(true)}
+                        className="py-1.5 px-3 bg-emerald-50 text-emerald-700 rounded-xl font-bold text-2xs cursor-pointer border-none flex-shrink-0"
+                    >
+                        Editar
+                    </button>
+                </div>
+            )}
+
+            {/* Mobile Search Overlay a Pantalla Completa */}
+            {isMobile && isMobileSearchOpen && (
+                <div className="fixed inset-0 bg-slate-900/98 backdrop-blur-xl z-50 p-5 flex flex-col text-slate-100 animate-fade-in">
+                    <div className="flex items-center gap-3.5 mb-5">
+                        <button 
+                            onClick={() => setIsMobileSearchOpen(false)}
+                            className="w-9 h-9 rounded-full bg-slate-800 border border-slate-700/50 flex items-center justify-center text-slate-300 cursor-pointer border-none"
+                        >
+                            <i className="fa-solid fa-xmark text-sm"></i>
+                        </button>
+                        <h2 className="text-base font-extrabold text-white flex items-center gap-2">
+                            <i className="fa-solid fa-route text-emerald-500"></i> Planificar Ciclorruta
+                        </h2>
+                    </div>
+
+                    <div className="flex flex-col gap-3 bg-slate-800/40 p-4 rounded-2xl border border-slate-700/30 mb-5">
+                        <FormField
+                            value={originInput}
+                            onChange={setOriginInput}
+                            placeholder="Escribe origen o toca el mapa..."
+                            iconClass="fa-solid fa-circle-play text-emerald-500"
+                            onSelectOnMap={() => {
+                                setSelectingLocationMode('origin');
+                                setIsMobileSearchOpen(false);
+                            }}
+                            isSelecting={selectingLocationMode === 'origin'}
+                            title="Fijar origen en el mapa"
+                            onSelectLocation={handleSelectOriginLocation}
+                            showGpsButton={true}
+                        />
+                        <FormField
+                            value={destInput}
+                            onChange={setDestInput}
+                            placeholder="Escribe destino o toca el mapa..."
+                            iconClass="fa-solid fa-location-dot text-rose-500"
+                            onSelectOnMap={() => {
+                                setSelectingLocationMode('destination');
+                                setIsMobileSearchOpen(false);
+                            }}
+                            isSelecting={selectingLocationMode === 'destination'}
+                            title="Fijar destino en el mapa"
+                            onSelectLocation={handleSelectDestLocation}
+                            showGpsButton={false}
+                        />
+                    </div>
+
+                    <div className="flex-grow overflow-y-auto flex flex-col gap-2 mb-5">
+                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Destinos Recomendados</span>
+                        {[
+                            { name: 'Portal Usme', coords: { lat: 4.5317, lng: -74.1166 } },
+                            { name: 'Estación Molinos', coords: { lat: 4.5631, lng: -74.1128 } },
+                            { name: 'Parque Metropolitano El Tunal', coords: { lat: 4.5761, lng: -74.1332 } },
+                            { name: 'UPZ Quiroga', coords: { lat: 4.5815, lng: -74.1118 } },
+                            { name: 'Parque Entre Nubes', coords: { lat: 4.5539, lng: -74.0934 } }
+                        ].map((loc, idx) => (
+                            <button
+                                key={idx}
+                                onClick={() => {
+                                    handleSelectDestLocation({ lat: loc.coords.lat, lng: loc.coords.lng }, loc.name);
+                                }}
+                                className="flex items-center gap-3 p-3 rounded-xl bg-slate-800/30 border border-slate-700/20 hover:bg-slate-800/60 transition-all text-left text-xs font-semibold text-slate-200 cursor-pointer border-none"
+                            >
+                                <i className="fa-solid fa-location-arrow text-slate-500 text-2xs"></i>
+                                <span>{loc.name}</span>
+                            </button>
+                        ))}
+                    </div>
+
+                    <div className="flex gap-2.5">
+                        <button
+                            onClick={() => {
+                                handleCalculateRoute();
+                                setIsMobileSearchOpen(false);
+                            }}
+                            disabled={isLoading}
+                            className="flex-1 py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-bold text-xs transition-all flex items-center justify-center gap-2 shadow-sm disabled:opacity-60 cursor-pointer border-none"
+                            style={{ background: 'linear-gradient(135deg, #10b981, #059669)', color: '#fff' }}
+                        >
+                            {isLoading ? (
+                                <>
+                                    <i className="fa-solid fa-spinner fa-spin"></i> Trazando...
+                                </>
+                            ) : (
+                                <>
+                                    <i className="fa-solid fa-compass"></i> Trazar Ruta
+                                </>
+                            )}
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            {/* 3. Mobile Floating Action Buttons (FABs) - Consolidated and Clean */}
+            {isMobile && !isMobileSearchOpen && (
+                <div className="absolute top-20 right-4 z-10 flex flex-col gap-3 md:hidden">
+                    {/* GPS Locate Button */}
+                    <button 
+                        onClick={() => {
+                            const activeLocConfig = localitiesMap[localidad];
+                            if (activeLocConfig) {
+                                setZoomToCoords(activeLocConfig.center);
+                                setTimeout(() => setZoomToCoords(null), 1000);
+                            }
+                        }}
+                        className="fab-btn animate-fade-in"
+                        title="Centrar Localidad"
+                    >
+                        <i className="fa-solid fa-crosshairs"></i>
+                    </button>
+
+                    {/* Consolidated Options Button */}
+                    <div className="relative">
+                        <button 
+                            onClick={() => {
+                                setMobileLayersOpen(!mobileLayersOpen);
+                            }}
+                            className={`fab-btn animate-fade-in ${mobileLayersOpen ? 'active' : ''}`}
+                            title="Opciones de Mapa"
+                        >
+                            <i className="fa-solid fa-sliders"></i>
+                        </button>
+                        {mobileLayersOpen && (
+                            <div className="absolute right-12 top-0 bg-white/95 backdrop-blur-md border border-slate-200 p-4 rounded-2xl shadow-xl z-20 w-64 text-slate-800 animate-fade-in flex flex-col gap-3">
+                                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5 border-b border-slate-100 pb-1.5">
+                                    <i className="fa-solid fa-sliders text-emerald-600"></i> Ajustes de Mapa
+                                </h4>
+                                
+                                {/* Localidad switcher inline */}
+                                <div className="flex flex-col gap-1">
+                                    <span className="text-[10px] font-bold text-slate-400 uppercase">Localidad Activa:</span>
+                                    <div className="flex gap-1 bg-slate-100 p-0.5 rounded-lg">
+                                        {Object.keys(localitiesMap).map(key => (
+                                            <button
+                                                key={key}
+                                                onClick={() => handleLocalidadChange(key)}
+                                                className={`flex-1 py-1 rounded text-2xs font-bold border-none cursor-pointer ${
+                                                    localidad === key ? 'bg-emerald-600 text-white shadow-xs' : 'text-slate-600 hover:bg-slate-200'
+                                                }`}
+                                                style={localidad === key ? { background: '#059669', color: '#fff' } : {}}
+                                            >
+                                                {localitiesMap[key].name}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                {/* View Mode Toggle Inline */}
+                                <div className="flex justify-between items-center py-1.5 border-t border-slate-100 mt-1">
+                                    <span className="text-2xs font-bold text-slate-700">Modo Científico</span>
+                                    <input 
+                                        type="checkbox" 
+                                        checked={viewMode === 'tech'} 
+                                        onChange={() => setViewMode(prev => prev === 'citizen' ? 'tech' : 'citizen')}
+                                        className="accent-emerald-600 w-4 h-4 cursor-pointer"
+                                    />
+                                </div>
+
+                                {/* Dark Mode Toggle Inline */}
+                                <div className="flex justify-between items-center py-1.5 border-t border-slate-100">
+                                    <span className="text-2xs font-bold text-slate-700">Modo Oscuro</span>
+                                    <input 
+                                        type="checkbox" 
+                                        checked={darkMode} 
+                                        onChange={() => setDarkMode(!darkMode)}
+                                        className="accent-emerald-600 w-4 h-4 cursor-pointer"
+                                    />
+                                </div>
+
+                                {/* Map Layers List */}
+                                <div className="border-t border-slate-100 pt-2 flex flex-col gap-1.5">
+                                    <span className="text-[10px] font-bold text-slate-450 uppercase">Capas del Mapa:</span>
+                                    <div className="flex flex-col gap-1 max-h-40 overflow-y-auto text-2xs">
+                                        <label className="flex justify-between items-center py-1 border-b border-slate-50">
+                                            <span className="text-slate-750">Límites Localidades</span>
+                                            <input type="checkbox" checked={mapLayers.localities} onChange={e => setMapLayers(p=>({...p, localities: e.target.checked}))} className="accent-emerald-600 w-3.5 h-3.5"/>
+                                        </label>
+                                        <label className="flex justify-between items-center py-1 border-b border-slate-50">
+                                            <span className="text-slate-750">CAIs Policía</span>
+                                            <input type="checkbox" checked={mapLayers.cais} onChange={e => setMapLayers(p=>({...p, cais: e.target.checked}))} className="accent-emerald-600 w-3.5 h-3.5"/>
+                                        </label>
+                                        <label className="flex justify-between items-center py-1 border-b border-slate-50">
+                                            <span className="text-slate-755">Obras IDU</span>
+                                            <input type="checkbox" checked={mapLayers.construction} onChange={e => setMapLayers(p=>({...p, construction: e.target.checked}))} className="accent-emerald-600 w-3.5 h-3.5"/>
+                                        </label>
+                                        <label className="flex justify-between items-center py-1 border-b border-slate-50">
+                                            <span className="text-slate-755">Accidentes</span>
+                                            <input type="checkbox" checked={mapLayers.accidents} onChange={e => setMapLayers(p=>({...p, accidents: e.target.checked}))} className="accent-emerald-600 w-3.5 h-3.5"/>
+                                        </label>
+                                        <label className="flex justify-between items-center py-1 border-b border-slate-50">
+                                            <span className="text-slate-755">Robos 24h</span>
+                                            <input type="checkbox" checked={mapLayers.robberies} onChange={e => setMapLayers(p=>({...p, robberies: e.target.checked}))} className="accent-emerald-600 w-3.5 h-3.5"/>
+                                        </label>
+                                        <label className="flex justify-between items-center py-1 border-b border-slate-50">
+                                            <span className="text-slate-755">Trancones</span>
+                                            <input type="checkbox" checked={mapLayers.trafficJams} onChange={e => setMapLayers(p=>({...p, trafficJams: e.target.checked}))} className="accent-emerald-600 w-3.5 h-3.5"/>
+                                        </label>
+                                        <label className="flex justify-between items-center py-1 border-b border-slate-50">
+                                            <span className="text-slate-755">Semáforos</span>
+                                            <input type="checkbox" checked={mapLayers.trafficLights} onChange={e => setMapLayers(p=>({...p, trafficLights: e.target.checked}))} className="accent-emerald-600 w-3.5 h-3.5"/>
+                                        </label>
+                                        <label className="flex justify-between items-center py-1">
+                                            <span className="text-slate-755">Reportes Ciudadanos</span>
+                                            <input type="checkbox" checked={mapLayers.citizenReports} onChange={e => setMapLayers(p=>({...p, citizenReports: e.target.checked}))} className="accent-emerald-600 w-3.5 h-3.5"/>
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
+
+            {/* 4. Mobile Bottom Sheet - hidden during active navigation */}
+            {isMobile && !isNavigating && !isMobileSearchOpen && (generatedRoutes.length > 0 || selectedSegmentId || isReporting || mobileActiveTab === 'citizen') && (
                 <div 
-                    className={`fixed bottom-0 left-4 right-4 z-40 md:hidden bg-white/95 backdrop-blur-md border border-slate-200/80 text-slate-800 rounded-t-3xl shadow-2xl transition-all duration-300 ease-in-out flex flex-col max-w-[calc(100vw-2rem)] mx-auto ${
+                    className={`fixed bottom-0 left-4 right-4 z-40 md:hidden backdrop-blur-md rounded-t-3xl shadow-2xl transition-all duration-300 ease-in-out flex flex-col max-w-[calc(100vw-2rem)] mx-auto ${
                         isBottomSheetExpanded ? 'h-[55vh]' : 'h-16'
                     }`}
+                    style={{
+                        background: 'var(--bg-surface)',
+                        border: '1px solid var(--border-surface)',
+                        color: 'var(--text-on-surface)'
+                    }}
                 >
                     {/* Handle Bar (Drag Trigger) */}
                     <div 
@@ -990,7 +1372,9 @@ export default function App() {
                                     ? `${generatedRoutes.length} Ruta(s) calculada(s)`
                                     : selectedSegmentId === 'custom_audit'
                                         ? 'Calle Auditada Seleccionada'
-                                        : 'Tramo Seleccionado'}
+                                        : isReporting
+                                            ? 'Nuevo Reporte Ciudadano'
+                                            : 'Tramo Seleccionado'}
                             </span>
                             <i className={`fa-solid ${isBottomSheetExpanded ? 'fa-chevron-down' : 'fa-chevron-up'} text-[10px] text-slate-500`}></i>
                         </div>
@@ -1009,10 +1393,63 @@ export default function App() {
 
                     {/* Content Area */}
                     <div className="flex-1 overflow-y-auto p-4 pb-6 text-slate-850">
-                        {resultsPanelComponent}
-                        {viewMode === 'tech' && (
-                            <div className="mt-4 border-t border-slate-200 pt-4">
-                                {statsPanelComponent}
+                        {isBottomSheetExpanded && (
+                            <div className="flex bg-slate-100 p-1 border border-slate-200 rounded-xl mb-4">
+                                <button
+                                    onClick={() => setMobileActiveTab('results')}
+                                    className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 border-none ${
+                                        mobileActiveTab === 'results' 
+                                            ? 'bg-emerald-600 text-white shadow-sm' 
+                                            : 'text-slate-650 hover:bg-slate-200/60'
+                                    }`}
+                                    style={mobileActiveTab === 'results' ? { background: '#059669', color: '#fff' } : {}}
+                                >
+                                    <i className="fa-solid fa-route"></i> Ruta
+                                </button>
+                                <button
+                                    onClick={() => setMobileActiveTab('cpted')}
+                                    className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 border-none ${
+                                        mobileActiveTab === 'cpted' 
+                                            ? 'bg-emerald-600 text-white shadow-sm' 
+                                            : 'text-slate-650 hover:bg-slate-200/60'
+                                    }`}
+                                    style={mobileActiveTab === 'cpted' ? { background: '#059669', color: '#fff' } : {}}
+                                >
+                                    <i className="fa-solid fa-sliders"></i> CPTED
+                                </button>
+                                <button
+                                    onClick={() => setMobileActiveTab('services')}
+                                    className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 border-none ${
+                                        mobileActiveTab === 'services' 
+                                            ? 'bg-emerald-600 text-white shadow-sm' 
+                                            : 'text-slate-650 hover:bg-slate-200/60'
+                                    }`}
+                                    style={mobileActiveTab === 'services' ? { background: '#059669', color: '#fff' } : {}}
+                                >
+                                    <i className="fa-solid fa-traffic-light"></i> Servicios
+                                </button>
+                            </div>
+                        )}
+
+                        {/* Switch Panel Contents */}
+                        {(!isBottomSheetExpanded || mobileActiveTab === 'results') && (
+                            <div className="flex flex-col gap-4">
+                                {resultsPanelComponent}
+                                {isBottomSheetExpanded && navigationControlsComponent}
+                                {viewMode === 'tech' && (
+                                    <div className="mt-2 border-t border-slate-200 pt-4">
+                                        {statsPanelComponent}
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                        {isBottomSheetExpanded && mobileActiveTab === 'cpted' && simulatorPanelComponent}
+                        {isBottomSheetExpanded && mobileActiveTab === 'services' && (
+                            <div className="flex flex-col gap-4">
+                                {trafficLightsPanelComponent}
+                                <div className="border-t border-slate-200 pt-4 my-2">
+                                    {citizenSciencePanelComponent}
+                                </div>
                             </div>
                         )}
                     </div>
@@ -1022,27 +1459,106 @@ export default function App() {
 
             {/* ==================== DESKTOP LAYOUT (md: relative flex-row) ==================== */}
 
-            {/* 5. Desktop Floating Header (Centered at the top) */}
-            {!isMobile && !leftDrawerOpen && (
+            {/* 5. Desktop Floating Header – hidden during active navigation */}
+            {!isMobile && !isNavigating && !leftDrawerOpen && (
                 <div className="hidden md:block">
                     {headerComponent}
                 </div>
             )}
 
-            {/* 6. Desktop Left Drawer (Planner, Simulator & Reports) */}
-            {!isMobile && (
+            {/* 6. Desktop Left Drawer – hidden during active 3D navigation */}
+            {!isMobile && !isNavigating && (
                 <div className={`floating-drawer left-drawer ${leftDrawerOpen ? 'open' : 'closed'} hidden md:flex`}>
+                    <div className="sidebar-tabs-vertical">
+                        <button 
+                            onClick={() => setActiveTab('routes')} 
+                            className={`tab-vertical-btn ${activeTab === 'routes' ? 'active' : ''}`}
+                            title="Planificador de Rutas"
+                        >
+                            <i className="fa-solid fa-map-location-dot"></i>
+                        </button>
+                        <button 
+                            onClick={() => setActiveTab('cpted')} 
+                            className={`tab-vertical-btn ${activeTab === 'cpted' ? 'active' : ''}`}
+                            title="CPTED y Simulación"
+                        >
+                            <i className="fa-solid fa-sliders"></i>
+                        </button>
+                        <button 
+                            onClick={() => setActiveTab('citizen')} 
+                            className={`tab-vertical-btn ${activeTab === 'citizen' ? 'active' : ''}`}
+                            title="Ciencia Ciudadana"
+                        >
+                            <i className="fa-solid fa-people-group"></i>
+                        </button>
+                        <button 
+                            onClick={() => setActiveTab('lights')} 
+                            className={`tab-vertical-btn ${activeTab === 'lights' ? 'active' : ''}`}
+                            title="Semáforos e Intersecciones"
+                        >
+                            <i className="fa-solid fa-traffic-light"></i>
+                        </button>
+                        <button 
+                            onClick={() => setActiveTab('nav')} 
+                            className={`tab-vertical-btn ${activeTab === 'nav' ? 'active' : ''}`}
+                            title="Navegación 3D"
+                        >
+                            <i className="fa-solid fa-bicycle"></i>
+                        </button>
+                        
+                        {/* Spacer to push dark mode button to the bottom */}
+                        <div className="flex-grow"></div>
+                        
+                        <button 
+                            onClick={() => setDarkMode(!darkMode)}
+                            className="tab-vertical-btn"
+                            title={darkMode ? "Modo Claro" : "Modo Oscuro"}
+                            style={{ color: darkMode ? '#eab308' : 'var(--text-secondary)' }}
+                        >
+                            <i className={`fa-solid ${darkMode ? 'fa-sun' : 'fa-moon'}`}></i>
+                        </button>
+                    </div>
+
                     <div className="drawer-content scrollable">
-                        {routePlannerComponent}
-                        <div className="drawer-divider"></div>
-                        {simulatorPanelComponent}
-                        {citizenSciencePanelComponent && (
+                        {activeTab === 'routes' && (
                             <>
-                                <div className="drawer-divider"></div>
-                                {citizenSciencePanelComponent}
+                                {routePlannerComponent}
+                                {generatedRoutes.length > 0 && (
+                                    <>
+                                        <div className="drawer-divider"></div>
+                                        {resultsPanelComponent}
+                                        {viewMode === 'tech' && (
+                                            <>
+                                                <div className="drawer-divider"></div>
+                                                {statsPanelComponent}
+                                            </>
+                                        )}
+                                    </>
+                                )}
                             </>
                         )}
+                        {activeTab === 'cpted' && (
+                            <>
+                                {simulatorPanelComponent}
+                                {selectedSegmentId && (
+                                    <>
+                                        <div className="drawer-divider"></div>
+                                        {resultsPanelComponent}
+                                        {viewMode === 'tech' && (
+                                            <>
+                                                <div className="drawer-divider"></div>
+                                                {statsPanelComponent}
+                                            </>
+                                        )}
+                                    </>
+                                )}
+                            </>
+                        )}
+                        {activeTab === 'citizen' && citizenSciencePanelComponent}
+                        {activeTab === 'lights' && trafficLightsPanelComponent}
+                        {activeTab === 'nav' && navigationControlsComponent}
                     </div>
+                    
                     <button 
                         onClick={() => setLeftDrawerOpen(!leftDrawerOpen)}
                         className="drawer-toggle-btn left-toggle"
@@ -1054,30 +1570,15 @@ export default function App() {
                 </div>
             )}
 
-            {/* 7. Desktop Right Drawer (Results, Recommendations & SHAP weights) */}
-            {!isMobile && (
-                <div className={`floating-drawer right-drawer ${rightDrawerOpen ? 'open' : 'closed'} hidden md:flex`}>
-                    <div className="drawer-content scrollable">
-                        {viewMode === 'tech' && statsPanelComponent}
-                        {viewMode === 'tech' && <div className="drawer-divider"></div>}
-                        {resultsPanelComponent}
-                    </div>
-                    <button 
-                        onClick={() => setRightDrawerOpen(!rightDrawerOpen)}
-                        className="drawer-toggle-btn right-toggle"
-                        title={rightDrawerOpen ? "Contraer Panel" : "Expandir Resultados"}
-                        aria-label="Contraer Panel Derecho"
-                    >
-                        <i className={`fa-solid ${rightDrawerOpen ? 'fa-chevron-right' : 'fa-chart-simple'}`}></i>
-                    </button>
-                </div>
-            )}
-
-            {/* 8. Desktop Floating Footer (Bottom centered) */}
-            {!isMobile && (
+            {/* 8. Desktop Floating Footer (Bottom centered) – hidden during navigation */}
+            {!isMobile && !isNavigating && (
                 <footer className="hidden md:block absolute bottom-4 left-1/2 -translate-x-1/2 z-20 text-[10px] text-slate-500 text-center bg-white/80 py-1.5 px-4 rounded-full border border-slate-200/50 backdrop-blur shadow-sm">
                     <p><strong>Ruta Clara v1.0.0 (MVP)</strong> • Semillero Construcción de software para la transformación del territorio</p>
                 </footer>
-            )}    </div>
+            )}
+
+            {/* 9. Cockpit HUD Overlay during 3D Navigation */}
+            {cockpitHUD}
+        </div>
     );
 }
