@@ -10,7 +10,8 @@ export default function ResultsPanel({
     recommendations = [],
     viewMode,
     trafficJamsOnRoute = [],
-    totalDelayMinutes = 0
+    totalDelayMinutes = 0,
+    onStartNavigation
 }) {
     const isTech = viewMode === 'tech';
 
@@ -56,8 +57,36 @@ export default function ResultsPanel({
                     {/* Route Alternatives List (only shown if route is plotted) */}
                     {hasRoute && generatedRoutes.length > 0 && (
                         <div id="route-comparison-box" className="route-comparison-box">
-                            <h4>
-                                <i className="fa-solid fa-list-ol text-accent"></i> Rutas Propuestas
+
+                            {/* PRIMARY ACTION — always first and visible */}
+                            <button
+                                onClick={() => onStartNavigation && onStartNavigation('gps')}
+                                style={{
+                                    width: '100%',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    gap: '0.5rem',
+                                    padding: '0.8rem 1rem',
+                                    marginBottom: '0.85rem',
+                                    fontWeight: '700',
+                                    fontSize: '0.92rem',
+                                    background: 'linear-gradient(135deg, #059669, #047857)',
+                                    border: 'none',
+                                    color: '#ffffff',
+                                    borderRadius: 'var(--radius-md)',
+                                    cursor: 'pointer',
+                                    boxShadow: '0 4px 16px rgba(5, 150, 105, 0.35)',
+                                    letterSpacing: '0.02em'
+                                }}
+                                title="Navegar usando tu ubicación GPS en tiempo real"
+                            >
+                                <i className="fa-solid fa-diamond-turn-right"></i> Cómo Llegar
+                            </button>
+
+                            {/* Route alternatives */}
+                            <h4 style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 0.5rem 0', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                                <i className="fa-solid fa-list-ol text-accent"></i> Rutas disponibles
                             </h4>
                             <div id="list-route-alternatives" className="route-alternatives-list">
                                 {generatedRoutes.map((route) => (
@@ -69,6 +98,30 @@ export default function ResultsPanel({
                                     />
                                 ))}
                             </div>
+
+                            {/* Secondary: simulation link */}
+                            <button
+                                onClick={() => onStartNavigation && onStartNavigation('simulated')}
+                                style={{
+                                    width: '100%',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    gap: '0.4rem',
+                                    padding: '0.4rem 0.75rem',
+                                    marginTop: '0.5rem',
+                                    fontWeight: '600',
+                                    fontSize: '0.72rem',
+                                    background: 'transparent',
+                                    border: '1px solid rgba(148,163,184,0.25)',
+                                    color: 'var(--text-secondary)',
+                                    borderRadius: 'var(--radius-md)',
+                                    cursor: 'pointer'
+                                }}
+                                title="Ver simulación animada del recorrido"
+                            >
+                                <i className="fa-solid fa-play" style={{ fontSize: '0.6rem' }}></i> Ver Simulación
+                            </button>
                         </div>
                     )}
 

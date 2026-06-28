@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import FormField from '../molecules/FormField';
 import Button from '../atoms/Button';
 import Switch from '../atoms/Switch';
@@ -34,6 +34,8 @@ export default function RoutePlanner({
             }));
         }
     };
+
+    const [layersOpen, setLayersOpen] = useState(false);
 
     return (
         <div className="route-planner-card">
@@ -71,12 +73,6 @@ export default function RoutePlanner({
                     </div>
                 </div>
             )}
-            <h3>
-                <i className="fa-solid fa-route text-accent"></i> Planificador de Rutas
-            </h3>
-            <p className="route-planner-desc">
-                Busca direcciones o haz clic en el mapa para definir origen y destino.
-            </p>
             
             <FormField
                 value={originInput}
@@ -129,83 +125,78 @@ export default function RoutePlanner({
                 )}
             </div>
 
-            {/* Map Layer Selector Controls */}
-            <div className="map-layers-section" style={{ marginTop: '1.25rem', borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '1rem' }}>
-                <h4 style={{ fontSize: '0.85rem', fontWeight: '600', color: 'var(--text-primary)', marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    <i className="fa-solid fa-layer-group text-accent"></i> Capas del Mapa
-                </h4>
-                <div className="layer-switches-grid" style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
-                    <div className="layer-switch-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
-                            <i className="fa-solid fa-map text-muted" style={{ marginRight: '0.4rem', width: '12px' }}></i> Límites de Localidades
-                        </span>
-                        <Switch
-                            id="layer-switch-localities"
-                            checked={mapLayers.localities}
-                            onChange={(val) => handleToggle('localities', val)}
-                        />
+            {/* Map Layer Selector Controls — collapsed accordion */}
+            <div className="map-layers-section" style={{ marginTop: '0.85rem', borderTop: '1px solid var(--border-surface)', paddingTop: '0.65rem' }}>
+                <button
+                    onClick={() => setLayersOpen(o => !o)}
+                    style={{
+                        width: '100%',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        background: 'transparent',
+                        border: 'none',
+                        cursor: 'pointer',
+                        padding: '0.1rem 0',
+                        color: 'var(--text-secondary)',
+                        fontSize: '0.75rem',
+                        fontWeight: '600',
+                        letterSpacing: '0.03em'
+                    }}
+                    aria-expanded={layersOpen}
+                >
+                    <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                        <i className="fa-solid fa-layer-group" style={{ color: 'var(--accent-color)' }}></i>
+                        Capas del Mapa
+                    </span>
+                    <i className={`fa-solid fa-chevron-${layersOpen ? 'up' : 'down'}`} style={{ fontSize: '0.65rem' }}></i>
+                </button>
+                {layersOpen && (
+                    <div className="layer-switches-grid" style={{ display: 'flex', flexDirection: 'column', gap: '0.55rem', marginTop: '0.6rem' }}>
+                        <div className="layer-switch-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                                <i className="fa-solid fa-map text-muted" style={{ marginRight: '0.4rem', width: '12px' }}></i> Límites de Localidades
+                            </span>
+                            <Switch id="layer-switch-localities" checked={mapLayers.localities} onChange={(val) => handleToggle('localities', val)} />
+                        </div>
+                        <div className="layer-switch-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                                <i className="fa-solid fa-shield-halved" style={{ marginRight: '0.4rem', width: '12px', color: '#38bdf8' }}></i> CAIs de Policía
+                            </span>
+                            <Switch id="layer-switch-cais" checked={mapLayers.cais} onChange={(val) => handleToggle('cais', val)} />
+                        </div>
+                        <div className="layer-switch-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                                <i className="fa-solid fa-person-digging" style={{ marginRight: '0.4rem', width: '12px', color: '#f97316' }}></i> Zonas de Obra (IDU)
+                            </span>
+                            <Switch id="layer-switch-construction" checked={mapLayers.construction} onChange={(val) => handleToggle('construction', val)} />
+                        </div>
+                        <div className="layer-switch-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                                <i className="fa-solid fa-car-burst" style={{ marginRight: '0.4rem', width: '12px', color: '#eab308' }}></i> Accidentes Recientes
+                            </span>
+                            <Switch id="layer-switch-accidents" checked={mapLayers.accidents} onChange={(val) => handleToggle('accidents', val)} />
+                        </div>
+                        <div className="layer-switch-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                                <i className="fa-solid fa-mask" style={{ marginRight: '0.4rem', width: '12px', color: '#ef4444' }}></i> Robos Últimas 24h
+                            </span>
+                            <Switch id="layer-switch-robberies" checked={mapLayers.robberies} onChange={(val) => handleToggle('robberies', val)} />
+                        </div>
+                        <div className="layer-switch-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                                <i className="fa-solid fa-car" style={{ marginRight: '0.4rem', width: '12px', color: '#f97316' }}></i> Trancones en Tiempo Real
+                            </span>
+                            <Switch id="layer-switch-traffic-jams" checked={mapLayers.trafficJams} onChange={(val) => handleToggle('trafficJams', val)} />
+                        </div>
+                        <div className="layer-switch-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                                <i className="fa-solid fa-people-group" style={{ marginRight: '0.4rem', width: '12px', color: 'var(--accent-color)' }}></i> Reportes Ciudadanos
+                            </span>
+                            <Switch id="layer-switch-citizen-reports" checked={mapLayers.citizenReports} onChange={(val) => handleToggle('citizenReports', val)} />
+                        </div>
                     </div>
-                    <div className="layer-switch-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
-                            <i className="fa-solid fa-shield-halved text-blue" style={{ marginRight: '0.4rem', width: '12px', color: '#38bdf8' }}></i> CAIs de Policía
-                        </span>
-                        <Switch
-                            id="layer-switch-cais"
-                            checked={mapLayers.cais}
-                            onChange={(val) => handleToggle('cais', val)}
-                        />
-                    </div>
-                    <div className="layer-switch-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
-                            <i className="fa-solid fa-person-digging text-orange" style={{ marginRight: '0.4rem', width: '12px', color: '#f97316' }}></i> Zonas de Obra (IDU)
-                        </span>
-                        <Switch
-                            id="layer-switch-construction"
-                            checked={mapLayers.construction}
-                            onChange={(val) => handleToggle('construction', val)}
-                        />
-                    </div>
-                    <div className="layer-switch-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
-                            <i className="fa-solid fa-car-burst text-yellow" style={{ marginRight: '0.4rem', width: '12px', color: '#eab308' }}></i> Accidentes Recientes
-                        </span>
-                        <Switch
-                            id="layer-switch-accidents"
-                            checked={mapLayers.accidents}
-                            onChange={(val) => handleToggle('accidents', val)}
-                        />
-                    </div>
-                    <div className="layer-switch-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
-                            <i className="fa-solid fa-mask text-red" style={{ marginRight: '0.4rem', width: '12px', color: '#ef4444' }}></i> Robos Últimas 24h
-                        </span>
-                        <Switch
-                            id="layer-switch-robberies"
-                            checked={mapLayers.robberies}
-                            onChange={(val) => handleToggle('robberies', val)}
-                        />
-                    </div>
-                    <div className="layer-switch-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
-                            <i className="fa-solid fa-car text-orange" style={{ marginRight: '0.4rem', width: '12px', color: '#f97316' }}></i> Trancones en Tiempo Real
-                        </span>
-                        <Switch
-                            id="layer-switch-traffic-jams"
-                            checked={mapLayers.trafficJams}
-                            onChange={(val) => handleToggle('trafficJams', val)}
-                        />
-                    </div>
-                    <div className="layer-switch-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
-                            <i className="fa-solid fa-people-group text-accent" style={{ marginRight: '0.4rem', width: '12px' }}></i> Reportes Ciudadanos
-                        </span>
-                        <Switch
-                            id="layer-switch-citizen-reports"
-                            checked={mapLayers.citizenReports}
-                            onChange={(val) => handleToggle('citizenReports', val)}
-                        />
-                    </div>
-                </div>
+                )}
             </div>
         </div>
     );

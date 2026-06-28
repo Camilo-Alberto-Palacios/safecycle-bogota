@@ -69,6 +69,7 @@ export default function App() {
 
     // 3D Navigation Simulator State
     const [isNavigating, setIsNavigating] = useState(false);
+    const [navigationMode, setNavigationMode] = useState('simulated'); // 'simulated' | 'gps'
     const [cyclistCoords, setCyclistCoords] = useState(null);
     const [cyclistIndex, setCyclistIndex] = useState(0);
     const [navSpeedMultiplier, setNavSpeedMultiplier] = useState(1);
@@ -83,6 +84,7 @@ export default function App() {
     const [mobileActiveTab, setMobileActiveTab] = useState('results');
     const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false);
     const [darkMode, setDarkMode] = useState(false);
+    const [mapStyle, setMapStyle] = useState('light'); // 'light' | 'dark' | 'terrain'
 
     // 3b. Citizen Science and Reports State
     const [citizenReports, setCitizenReports] = useState([]);
@@ -129,6 +131,15 @@ export default function App() {
             document.body.classList.remove('dark-mode');
         }
     }, [darkMode]);
+
+    // Sync darkMode with mapStyle
+    useEffect(() => {
+        if (mapStyle === 'dark') {
+            setDarkMode(true);
+        } else {
+            setDarkMode(false);
+        }
+    }, [mapStyle]);
 
     // A. Auto-cycle Traffic Lights
     useEffect(() => {
@@ -204,7 +215,7 @@ export default function App() {
     // D. 3D First Person Navigation Simulation loop
     useEffect(() => {
         const activeRoute = generatedRoutes.find(r => r.id === activeRouteId);
-        if (navStatus !== 'running' || !activeRoute) return;
+        if (navStatus !== 'running' || !activeRoute || navigationMode === 'gps') return;
 
         let waitTicks = 0;
 
@@ -290,7 +301,76 @@ export default function App() {
         }, 400 / navSpeedMultiplier);
 
         return () => clearInterval(interval);
-    }, [navStatus, cyclistIndex, activeRouteId, navSpeedMultiplier, trafficLights, segments, simulationState, constructionZones, citizenReports]);
+    }, [navStatus, cyclistIndex, activeRouteId, navSpeedMultiplier, trafficLights, segments, simulationState, constructionZones, citizenReports, navigationMode]);
+
+    // D2. Real-time GPS Navigation watcher
+    useEffect(() => {
+        if (navStatus !== 'running' || navigationMode !== 'gps') return;
+
+        if (!navigator.geolocation) {
+            alert("La geolocalización no está soportada por tu navegador. Cambiando a Simulación.");
+            setNavigationMode('simulated');
+            return;
+        }
+
+        const activeRoute = generatedRoutes.find(r => r.id === activeRouteId);
+        if (!activeRoute) return;
+
+        const handleSuccess = (position) => {
+            const { latitude, longitude, heading, speed } = position.coords;
+            setCyclistCoords([latitude, longitude]);
+
+            if (speed !== null && speed !== undefined) {
+                setSpeedKmh(Math.round(speed * 3.6));
+            } else {
+                setSpeedKmh(15); // realistic cycling speed fallback
+            }
+
+            // Find closest coordinate index on the active route
+            let closestIdx = 0;
+            let minDist = Infinity;
+            activeRoute.coordinates.forEach((coord, idx) => {
+                const dist = Math.sqrt(Math.pow(coord[0] - latitude, 2) + Math.pow(coord[1] - longitude, 2));
+                if (dist < minDist) {
+                    minDist = dist;
+                    closestIdx = idx;
+                }
+            });
+            setCyclistIndex(closestIdx);
+
+            // Dynamic recommendations based on current coordinate
+            const riskInfo = evaluateCoordinateRisk(
+                latitude, 
+                longitude, 
+                segments, 
+                simulationState, 
+                constructionZones, 
+                simulationState.showConstruction,
+                citizenReports
+            );
+
+            if (riskInfo.level === 'Alto') {
+                setHudRecommendation('⚠️ Sector con alto índice de hurto. Evita detenerte y mantente en alerta.');
+            } else if (simulationState.weather === 'lluvia') {
+                setHudRecommendation('🌧️ Calzada resbaladiza por lluvias. Conduce con precaución.');
+            } else {
+                setHudRecommendation('🚴 Navegando en tiempo real. Sigue la ruta.');
+            }
+        };
+
+        const handleError = (error) => {
+            console.error("GPS Watch Error:", error);
+            alert("No se pudo acceder a tu ubicación GPS. Activando simulación.");
+            setNavigationMode('simulated');
+        };
+
+        const watchId = navigator.geolocation.watchPosition(handleSuccess, handleError, {
+            enableHighAccuracy: true,
+            maximumAge: 0
+        });
+
+        return () => navigator.geolocation.clearWatch(watchId);
+    }, [navStatus, navigationMode, activeRouteId, generatedRoutes, segments, simulationState, constructionZones, citizenReports]);
 
     // 5. Update default origin when localidad changes
     useEffect(() => {
@@ -729,6 +809,17 @@ export default function App() {
         setIsBottomSheetExpanded(false);
     };
 
+    // 14b. Start 3D navigation
+    const handleStartNavigation = (mode = 'simulated') => {
+        const activeRoute = generatedRoutes.find(r => r.id === activeRouteId);
+        if (!activeRoute) return;
+        setNavigationMode(mode);
+        setIsNavigating(true);
+        setNavStatus('running');
+        setCyclistIndex(0);
+        setCyclistCoords(activeRoute.coordinates[0]);
+    };
+
     // 15. Calculate active predictions and CPTED recommendations
     let currentPrediction = { score: '2.4', level: 'Bajo', shaps: {} };
     let recommendations = [];
@@ -801,7 +892,7 @@ export default function App() {
 
     const mapComponent = (
         <MapComponent
-            darkMode={darkMode}
+            mapStyle={mapStyle}
             localidad={localidad}
             onLocalidadChange={handleLocalidadChange}
             selectedSegmentId={selectedSegmentId}
@@ -824,6 +915,7 @@ export default function App() {
             zoomToCoords={zoomToCoords}
             trafficLights={trafficLights}
             isNavigating={isNavigating}
+            navigationMode={navigationMode}
             cyclistCoords={cyclistCoords}
             cyclistIndex={cyclistIndex}
             activeRoute={activeRoute}
@@ -874,6 +966,7 @@ export default function App() {
             viewMode={viewMode}
             trafficJamsOnRoute={activeRoute ? activeRoute.trafficJamsOnRoute : []}
             totalDelayMinutes={activeRoute ? activeRoute.totalDelayMinutes : 0}
+            onStartNavigation={handleStartNavigation}
         />
     );
 
@@ -913,113 +1006,7 @@ export default function App() {
         />
     );
 
-    const navigationControlsComponent = (
-        <div className="navigation-controls-card animate-fade-in">
-            <h3>
-                <i className="fa-solid fa-bicycle text-accent"></i> Simulación Navegación 3D
-            </h3>
-            <p className="navigation-desc">
-                Recorre la ruta en primera persona. El mapa se inclinará y girará según el rumbo del trayecto.
-            </p>
 
-            {!activeRoute ? (
-                <div className="nav-warning-box">
-                    <i className="fa-solid fa-triangle-exclamation"></i> Para iniciar la simulación 3D, primero debes calcular una ruta en la pestaña de <strong>Rutas</strong>.
-                </div>
-            ) : (
-                <div className="nav-active-controls" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                    <div className="nav-status-banner">
-                        <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>Ruta Activa:</span>
-                        <strong style={{ fontSize: '0.85rem', color: 'var(--text-primary)' }}>{activeRoute.name} ({activeRoute.distanceKm} km)</strong>
-                        <span style={{ fontSize: '0.65rem', color: 'var(--text-secondary)' }}>
-                            Progreso: {Math.round((cyclistIndex / (activeRoute.coordinates.length - 1)) * 100)}% ({cyclistIndex} / {activeRoute.coordinates.length - 1} pts)
-                        </span>
-                    </div>
-
-                    <div className="nav-buttons-row" style={{ display: 'flex', gap: '0.5rem' }}>
-                        {navStatus === 'stopped' && (
-                            <button
-                                className="btn-flat btn-flat-primary"
-                                onClick={() => {
-                                    setIsNavigating(true);
-                                    setNavStatus('running');
-                                    setCyclistIndex(0);
-                                    setCyclistCoords(activeRoute.coordinates[0]);
-                                }}
-                                style={{ flex: 1 }}
-                            >
-                                <i className="fa-solid fa-play"></i> Iniciar
-                            </button>
-                        )}
-
-                        {navStatus === 'running' && (
-                            <button
-                                className="btn-flat btn-flat-warning"
-                                onClick={() => setNavStatus('paused')}
-                                style={{ flex: 1 }}
-                            >
-                                <i className="fa-solid fa-pause"></i> Pausar
-                            </button>
-                        )}
-
-                        {navStatus === 'paused' && (
-                            <button
-                                className="btn-flat btn-flat-primary"
-                                onClick={() => setNavStatus('running')}
-                                style={{ flex: 1 }}
-                            >
-                                <i className="fa-solid fa-play"></i> Continuar
-                            </button>
-                        )}
-
-                        {navStatus !== 'stopped' && (
-                            <button
-                                className="btn-flat btn-flat-danger"
-                                onClick={() => {
-                                    setNavStatus('stopped');
-                                    setIsNavigating(false);
-                                    setCyclistCoords(null);
-                                    setCyclistIndex(0);
-                                    setSpeedKmh(0);
-                                    setNextTrafficLight(null);
-                                }}
-                                style={{ flex: 1 }}
-                            >
-                                <i className="fa-solid fa-square"></i> Detener
-                            </button>
-                        )}
-                    </div>
-
-                    <div className="speed-multiplier-control">
-                        <label style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '0.4rem' }}>
-                            Velocidad de Simulación:
-                        </label>
-                        <div className="speed-multiplier-track">
-                            {[1, 2, 5].map(mult => (
-                                <button
-                                    key={mult}
-                                    onClick={() => setNavSpeedMultiplier(mult)}
-                                    style={{
-                                        flex: 1,
-                                        padding: '0.25rem',
-                                        borderRadius: '6px',
-                                        background: navSpeedMultiplier === mult ? 'var(--accent-color, #6366f1)' : 'transparent',
-                                        color: navSpeedMultiplier === mult ? '#fff' : 'var(--text-secondary)',
-                                        border: 'none',
-                                        fontSize: '0.7rem',
-                                        fontWeight: '700',
-                                        cursor: 'pointer'
-                                    }}
-                                >
-                                    {mult}x
-                                </button>
-                            ))}
-                        </div>
-                    </div>
-                </div>
-            )}
-        </div>
-    );
 
     const cockpitHUD = isNavigating && activeRoute && (
         <div className="cockpit-hud-overlay animate-slide-up">
@@ -1049,11 +1036,77 @@ export default function App() {
                         <span className="hud-stat-value text-muted">-</span>
                     )}
                 </div>
+
+                <div className="hud-stat-box">
+                    <span className="hud-stat-label">MODO</span>
+                    <span className="hud-stat-value" style={{ 
+                        fontSize: '0.85rem', 
+                        fontWeight: '700', 
+                        color: navigationMode === 'gps' ? '#06b6d4' : '#10b981',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.25rem'
+                    }}>
+                        <i className={navigationMode === 'gps' ? "fa-solid fa-satellite-dish" : "fa-solid fa-desktop"}></i> {navigationMode === 'gps' ? 'GPS' : 'SIM'}
+                    </span>
+                </div>
             </div>
 
             <div className="hud-recommendation-banner">
                 <p className="hud-rec-text">{hudRecommendation}</p>
             </div>
+
+            {/* Simulación Play/Pause y Velocidad inline o mensaje GPS */}
+            {navigationMode === 'simulated' ? (
+                <div className="hud-controls-row flex items-center justify-center gap-4 my-1 z-10" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '1rem', margin: '0.25rem 0' }}>
+                    {navStatus === 'running' && (
+                        <button
+                            className="btn-flat btn-flat-warning"
+                            onClick={() => setNavStatus('paused')}
+                            style={{ padding: '0.4rem 1rem', display: 'flex', alignItems: 'center', gap: '0.35rem', borderRadius: '6px', fontSize: '0.75rem', fontWeight: '600', cursor: 'pointer', border: '1px solid rgba(234, 179, 8, 0.3)', background: 'rgba(234, 179, 8, 0.15)', color: '#fef08a' }}
+                        >
+                            <i className="fa-solid fa-pause"></i> Pausar
+                    </button>
+                    )}
+                    {navStatus === 'paused' && (
+                        <button
+                            className="btn-flat btn-flat-primary"
+                            onClick={() => setNavStatus('running')}
+                            style={{ padding: '0.4rem 1rem', display: 'flex', alignItems: 'center', gap: '0.35rem', borderRadius: '6px', fontSize: '0.75rem', fontWeight: '600', cursor: 'pointer', border: 'none', background: 'var(--accent-gradient)', color: '#ffffff' }}
+                        >
+                            <i className="fa-solid fa-play"></i> Reanudar
+                        </button>
+                    )}
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', background: 'rgba(15, 23, 42, 0.4)', padding: '0.2rem 0.4rem', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.08)' }}>
+                        <span style={{ fontSize: '0.65rem', color: '#64748b', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.05em', marginRight: '0.25rem' }}>Velocidad:</span>
+                        {[1, 2, 5].map(mult => (
+                            <button
+                                key={mult}
+                                onClick={() => setNavSpeedMultiplier(mult)}
+                                style={{
+                                    padding: '0.2rem 0.5rem',
+                                    borderRadius: '4px',
+                                    background: navSpeedMultiplier === mult ? 'var(--accent-color, #10b981)' : 'transparent',
+                                    color: navSpeedMultiplier === mult ? '#ffffff' : '#94a3b8',
+                                    border: 'none',
+                                    fontSize: '0.65rem',
+                                    fontWeight: '700',
+                                    cursor: 'pointer',
+                                    transition: 'all 0.2s ease'
+                                }}
+                            >
+                                {mult}x
+                            </button>
+                        ))}
+                    </div>
+                </div>
+            ) : (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.72rem', color: '#06b6d4', background: 'rgba(6, 182, 212, 0.12)', border: '1px solid rgba(6, 182, 212, 0.25)', padding: '0.35rem 1rem', borderRadius: '20px', margin: '0.25rem 0', fontWeight: '600' }}>
+                    <i className="fa-solid fa-satellite fa-bounce"></i>
+                    Rastreo GPS en tiempo real activo. Sigue la ruta en tu recorrido físico.
+                </div>
+            )}
 
             <div className="hud-handlebar-cockpit">
                 <div className="handlebar-left"></div>
@@ -1293,15 +1346,28 @@ export default function App() {
                                     />
                                 </div>
 
-                                {/* Dark Mode Toggle Inline */}
-                                <div className="flex justify-between items-center py-1.5 border-t border-slate-100">
-                                    <span className="text-2xs font-bold text-slate-700">Modo Oscuro</span>
-                                    <input 
-                                        type="checkbox" 
-                                        checked={darkMode} 
-                                        onChange={() => setDarkMode(!darkMode)}
-                                        className="accent-emerald-600 w-4 h-4 cursor-pointer"
-                                    />
+                                {/* Map Style Selector Inline */}
+                                <div className="flex flex-col gap-1 border-t border-slate-100 pt-2 pb-1">
+                                    <span className="text-[10px] font-bold text-slate-400 uppercase">Estilo de Mapa:</span>
+                                    <div className="flex gap-1 bg-slate-100 p-0.5 rounded-lg">
+                                        {[
+                                            { key: 'light', label: 'Claro', icon: 'fa-sun' },
+                                            { key: 'dark', label: 'Oscuro', icon: 'fa-moon' },
+                                            { key: 'terrain', label: 'Relieve', icon: 'fa-mountain' }
+                                        ].map(opt => (
+                                            <button
+                                                key={opt.key}
+                                                onClick={() => setMapStyle(opt.key)}
+                                                className={`flex-1 py-1 rounded text-[10px] font-bold border-none cursor-pointer flex items-center justify-center gap-1 ${
+                                                    mapStyle === opt.key ? 'bg-emerald-600 text-white shadow-xs' : 'text-slate-650 hover:bg-slate-200'
+                                                }`}
+                                                style={mapStyle === opt.key ? { background: '#059669', color: '#fff' } : {}}
+                                            >
+                                                <i className={`fa-solid ${opt.icon}`}></i>
+                                                {opt.label}
+                                            </button>
+                                        ))}
+                                    </div>
                                 </div>
 
                                 {/* Map Layers List */}
@@ -1435,7 +1501,6 @@ export default function App() {
                         {(!isBottomSheetExpanded || mobileActiveTab === 'results') && (
                             <div className="flex flex-col gap-4">
                                 {resultsPanelComponent}
-                                {isBottomSheetExpanded && navigationControlsComponent}
                                 {viewMode === 'tech' && (
                                     <div className="mt-2 border-t border-slate-200 pt-4">
                                         {statsPanelComponent}
@@ -1498,24 +1563,33 @@ export default function App() {
                         >
                             <i className="fa-solid fa-traffic-light"></i>
                         </button>
-                        <button 
-                            onClick={() => setActiveTab('nav')} 
-                            className={`tab-vertical-btn ${activeTab === 'nav' ? 'active' : ''}`}
-                            title="Navegación 3D"
-                        >
-                            <i className="fa-solid fa-bicycle"></i>
-                        </button>
+
                         
                         {/* Spacer to push dark mode button to the bottom */}
                         <div className="flex-grow"></div>
                         
                         <button 
-                            onClick={() => setDarkMode(!darkMode)}
+                            onClick={() => {
+                                if (mapStyle === 'light') setMapStyle('dark');
+                                else if (mapStyle === 'dark') setMapStyle('terrain');
+                                else setMapStyle('light');
+                            }}
                             className="tab-vertical-btn"
-                            title={darkMode ? "Modo Claro" : "Modo Oscuro"}
-                            style={{ color: darkMode ? '#eab308' : 'var(--text-secondary)' }}
+                            title={
+                                mapStyle === 'light' ? "Modo Oscuro" : 
+                                mapStyle === 'dark' ? "Modo Elevaciones (3D/Relieve)" : 
+                                "Modo Claro"
+                            }
+                            style={{ 
+                                color: mapStyle === 'light' ? 'var(--text-secondary)' : 
+                                       mapStyle === 'dark' ? '#eab308' : '#38bdf8' 
+                            }}
                         >
-                            <i className={`fa-solid ${darkMode ? 'fa-sun' : 'fa-moon'}`}></i>
+                            <i className={`fa-solid ${
+                                mapStyle === 'light' ? 'fa-moon' : 
+                                mapStyle === 'dark' ? 'fa-mountain' : 
+                                'fa-sun'
+                            }`}></i>
                         </button>
                     </div>
 
@@ -1554,9 +1628,8 @@ export default function App() {
                                 )}
                             </>
                         )}
-                        {activeTab === 'citizen' && citizenSciencePanelComponent}
+                         {activeTab === 'citizen' && citizenSciencePanelComponent}
                         {activeTab === 'lights' && trafficLightsPanelComponent}
-                        {activeTab === 'nav' && navigationControlsComponent}
                     </div>
                     
                     <button 

@@ -69,7 +69,8 @@ function getLocalityKey(locNombre) {
 }
 
 export default function MapComponent({
-    darkMode = false,
+    mapStyle = 'light',
+    navigationMode = 'simulated',
     localidad,
     onLocalidadChange,
     selectedSegmentId,
@@ -160,15 +161,23 @@ export default function MapComponent({
 
         mapRef.current = map;
 
-        // Initial Tile Layer based on darkMode
+        // Initial Tile Layer based on mapStyle
+        let initialUrl = 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png';
+        let initialAttr = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>';
+        
+        if (mapStyle === 'dark') {
+            initialUrl = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
+        } else if (mapStyle === 'terrain') {
+            initialUrl = 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png';
+            initialAttr = 'Map data: &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, SRTM | Map style: &copy; <a href="https://opentopomap.org">OpenTopoMap</a> (CC-BY-SA)';
+        }
+
         const initialTiles = L.tileLayer(
-            darkMode 
-                ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
-                : 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
+            initialUrl,
             {
-                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
-                subdomains: 'abcd',
-                maxZoom: 20
+                attribution: initialAttr,
+                subdomains: mapStyle === 'terrain' ? 'abc' : 'abcd',
+                maxZoom: mapStyle === 'terrain' ? 17 : 20
             }
         ).addTo(map);
 
@@ -337,7 +346,7 @@ export default function MapComponent({
         };
     }, []);
 
-    // 1b. Dynamically toggle Map tile layers on darkMode state changes
+    // 1b. Dynamically toggle Map tile layers on mapStyle state changes
     useEffect(() => {
         const map = mapRef.current;
         if (!map || !tileLayerRef.current) return;
@@ -345,19 +354,25 @@ export default function MapComponent({
         // Remove old tile layer
         map.removeLayer(tileLayerRef.current);
 
-        // Add new tile layer based on darkMode
-        const newUrl = darkMode 
-            ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
-            : 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png';
+        // Add new tile layer based on mapStyle
+        let newUrl = 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png';
+        let attr = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>';
+        
+        if (mapStyle === 'dark') {
+            newUrl = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
+        } else if (mapStyle === 'terrain') {
+            newUrl = 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png';
+            attr = 'Map data: &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, SRTM | Map style: &copy; <a href="https://opentopomap.org">OpenTopoMap</a> (CC-BY-SA)';
+        }
 
         const newTiles = L.tileLayer(newUrl, {
-            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
-            subdomains: 'abcd',
-            maxZoom: 20
+            attribution: attr,
+            subdomains: mapStyle === 'terrain' ? 'abc' : 'abcd',
+            maxZoom: mapStyle === 'terrain' ? 17 : 20
         }).addTo(map);
 
         tileLayerRef.current = newTiles;
-    }, [darkMode]);
+    }, [mapStyle]);
 
     // 2. Adjust cursor based on selecting location mode
     useEffect(() => {
@@ -1205,13 +1220,23 @@ export default function MapComponent({
             return;
         }
 
-        // Disable standard navigation when in 3D Mode
-        map.dragging.disable();
-        map.touchZoom.disable();
-        map.doubleClickZoom.disable();
-        map.scrollWheelZoom.disable();
-        map.boxZoom.disable();
-        map.keyboard.disable();
+        // In GPS mode keep interactions enabled so user can pan/zoom freely.
+        // In simulation mode, disable dragging so camera auto-follows the cyclist.
+        if (navigationMode === 'gps') {
+            map.dragging.enable();
+            map.touchZoom.enable();
+            map.scrollWheelZoom.enable();
+            map.doubleClickZoom.enable();
+            map.boxZoom.enable();
+            map.keyboard.enable();
+        } else {
+            map.dragging.disable();
+            map.touchZoom.disable();
+            map.doubleClickZoom.disable();
+            map.scrollWheelZoom.disable();
+            map.boxZoom.disable();
+            map.keyboard.disable();
+        }
 
         // Calculate bearing/rotation
         let bearing = 0;
@@ -1265,9 +1290,10 @@ export default function MapComponent({
 
         const paneEl = mapContainerRef.current?.querySelector('.leaflet-map-pane');
         if (paneEl) {
-            paneEl.style.transform = `perspective(800px) rotateX(55deg) rotateZ(${-bearing}deg) scale(1.35)`;
-            paneEl.style.transformOrigin = '50% 55%';
-            paneEl.style.transition = 'transform 0.4s ease-out';
+            // Gentle tilt: 38° gives a subtle 3D feel without distortion
+            paneEl.style.transform = `perspective(1200px) rotateX(38deg) rotateZ(${-bearing}deg) scale(1.2)`;
+            paneEl.style.transformOrigin = '50% 50%';
+            paneEl.style.transition = 'transform 0.5s ease-out';
         }
     }, [isNavigating, cyclistCoords, cyclistIndex, activeRouteId]);
 
